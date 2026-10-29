@@ -1,0 +1,103 @@
+# Virtual view 'dn_sari_aggregate_reports' — katalog semantik Text-to-SQL ai-service.
+# DIHASILKAN scripts/gen_catalog.py — jangan edit manual; ubah generator lalu jalankan ulang.
+# Placeholder {scope_filter} diisi sistem (filter wilayah pengguna, parameter terikat).
+name: dn_sari_aggregate_reports
+modul: SARI
+deskripsi: Laporan agregat mingguan SARI per faskes sentinel (satu baris per faskes per minggu epidemiologi). Gunakan SUM() atas kolom total_*; jangan COUNT(DISTINCT) untuk angka kasus.
+grain: satu baris per faskes per minggu epidemiologi (epi_year, epi_week)
+hitung:
+  jumlah_laporan: COUNT(report_id)
+  total_kasus: SUM(total_cases)
+columns:
+- name: report_id
+  type: id
+  deskripsi: ID laporan agregat
+- name: facility_id
+  type: id
+  deskripsi: ID faskes pelapor
+- name: facility_name
+  type: text
+  deskripsi: Nama faskes pelapor
+- name: facility_provinsi_kode
+  type: text
+  deskripsi: Kode provinsi faskes
+- name: facility_kab_kota_kode
+  type: text
+  deskripsi: Kode kabupaten/kota faskes
+- name: facility_provinsi_name
+  type: text
+  deskripsi: Nama provinsi faskes
+- name: facility_kab_kota_name
+  type: text
+  deskripsi: Nama kabupaten/kota faskes
+- name: epi_week
+  type: int
+  deskripsi: Minggu epidemiologi laporan
+- name: epi_year
+  type: int
+  deskripsi: Tahun epidemiologi laporan
+- name: status
+  type: text
+  deskripsi: Status laporan
+  nilai:
+  - DRAFT
+  - SUBMITTED
+  - VERIFIED
+  - REJECTED
+- name: verified_at
+  type: datetime
+  deskripsi: Waktu verifikasi
+- name: rejected_at
+  type: datetime
+  deskripsi: Waktu penolakan
+- name: created_at
+  type: datetime
+  deskripsi: Waktu laporan dibuat
+- name: total_cases
+  type: int
+  deskripsi: Total kasus SARI yang dilaporkan minggu itu
+- name: total_specimen_cases
+  type: int
+  deskripsi: Total kasus yang diambil spesimennya
+- name: total_inpatient
+  type: int
+  deskripsi: Total pasien rawat inap
+scope:
+  postgres:
+    facility_id: ar."facilityId"
+    provinsi_kode: f."provinsiKode"
+    kabupaten_kota_kode: f."kabupatenKotaKode"
+  clickhouse:
+    facility_id: facilityId
+    provinsi_kode: facility_provinsi_kode
+    kabupaten_kota_kode: facility_kab_kota_kode
+contoh:
+- pertanyaan: Total kasus SARI dari laporan agregat per provinsi tahun 2025
+  sql: SELECT facility_provinsi_name AS provinsi, SUM(total_cases) AS total_kasus, COUNT(report_id) AS jumlah_laporan FROM dn_sari_aggregate_reports WHERE epi_year = 2025 GROUP BY facility_provinsi_name ORDER BY total_kasus DESC
+sql:
+  postgres: |2
+                  SELECT
+                    ar.id AS report_id,
+                    ar."facilityId" AS facility_id,
+                    f.name AS facility_name,
+                    f."provinsiKode" AS facility_provinsi_kode,
+                    f."kabupatenKotaKode" AS facility_kab_kota_kode,
+                    fp.name AS facility_provinsi_name,
+                    fk.name AS facility_kab_kota_name,
+                    ar."epiWeek"::int AS epi_week,
+                    ar."epiYear"::int AS epi_year,
+                    ar.status AS status,
+                    ar."verifiedAt" AS verified_at,
+                    ar."rejectedAt" AS rejected_at,
+                    ar."createdAt" AS created_at,
+                    ar."totalSariCases" AS total_cases,
+    ar."totalSpecimenCases" AS total_specimen_cases,
+    ar."totalInpatient" AS total_inpatient
+                  FROM sari.aggregate_reports ar
+                  LEFT JOIN master.facilities f ON f.id = ar."facilityId"
+                  LEFT JOIN master.regions fp ON fp.code = f."provinsiKode" AND fp.level = 'PROVINCE'
+                  LEFT JOIN master.regions fk ON fk.code = f."kabupatenKotaKode" AND fk.level = 'CITY'
+                  WHERE {scope_filter}
+  clickhouse: |
+    SELECT id AS report_id, facilityId AS facility_id, facility_name, facility_provinsi_kode, facility_kab_kota_kode, facility_provinsi_name, facility_kab_kota_name, epiWeek AS epi_week, epiYear AS epi_year, status, verifiedAt AS verified_at, rejectedAt AS rejected_at, createdAt AS created_at, totalSariCases AS total_cases, totalSpecimenCases AS total_specimen_cases, totalInpatient AS total_inpatient FROM satu_data_penyakit.dn_sari_aggregate_reports WHERE {scope_filter}
+catatan: Angka laporan agregat adalah input manual faskes, terpisah dari kasus individual (dn_*_surveilans).

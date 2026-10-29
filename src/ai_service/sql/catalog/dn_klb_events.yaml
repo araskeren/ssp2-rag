@@ -1,0 +1,133 @@
+# Virtual view 'dn_klb_events' — katalog semantik Text-to-SQL ai-service.
+# DIHASILKAN scripts/gen_catalog.py — jangan edit manual; ubah generator lalu jalankan ulang.
+# Placeholder {scope_filter} diisi sistem (filter wilayah pengguna, parameter terikat).
+name: dn_klb_events
+modul: Epi-Intel / KLB keracunan pangan (SKDR)
+deskripsi: 'Kejadian Luar Biasa (KLB) keracunan pangan dari modul Epidemiologi Intelijen: satu baris per kejadian dengan jumlah terpapar, sakit, dirawat, meninggal. Wilayah tersimpan sebagai nama (bukan kode); scope wilayah memakai faskes pelapor bila ada.'
+grain: satu baris per kejadian KLB
+hitung:
+  jumlah_kejadian: COUNT(event_id)
+  total_sakit: SUM(jumlah_sakit)
+  total_meninggal: SUM(jumlah_meninggal)
+columns:
+- name: event_id
+  type: id
+  deskripsi: ID kejadian
+- name: sumber_data
+  type: text
+  deskripsi: Sumber data (mis. SKDR)
+- name: nomor_epid
+  type: text
+  deskripsi: Nomor epidemiologi kejadian
+- name: minggu_epidemiologi
+  type: int
+  deskripsi: Minggu epidemiologi yang dilaporkan
+- name: tanggal_kejadian
+  type: date
+  deskripsi: Tanggal kejadian
+- name: tanggal_lapor
+  type: date
+  deskripsi: Tanggal laporan
+- name: epi_week_kejadian
+  type: int
+  deskripsi: Minggu ISO dari tanggal_kejadian
+- name: epi_year_kejadian
+  type: int
+  deskripsi: Tahun ISO dari tanggal_kejadian
+- name: provinsi
+  type: text
+  deskripsi: Nama provinsi kejadian
+- name: kabupaten_kota
+  type: text
+  deskripsi: Nama kabupaten/kota kejadian
+- name: kecamatan
+  type: text
+  deskripsi: Nama kecamatan
+- name: desa_kelurahan
+  type: text
+  deskripsi: Nama desa/kelurahan
+- name: nama_puskesmas
+  type: text
+  deskripsi: Puskesmas pelapor
+- name: tempat_kejadian
+  type: text
+  deskripsi: Tempat kejadian
+- name: jenis_pangan_dicurigai
+  type: text
+  deskripsi: Jenis pangan yang dicurigai
+- name: jumlah_terpapar
+  type: int
+  deskripsi: Jumlah orang terpapar
+- name: jumlah_sakit
+  type: int
+  deskripsi: Jumlah orang sakit
+- name: jumlah_dirawat
+  type: int
+  deskripsi: Jumlah dirawat
+- name: jumlah_meninggal
+  type: int
+  deskripsi: Jumlah meninggal
+- name: status
+  type: text
+  deskripsi: Status penanganan
+  nilai:
+  - BARU
+  - INVESTIGASI
+  - SELESAI
+- name: facility_id
+  type: id
+  deskripsi: ID faskes pelapor (bisa NULL)
+- name: facility_provinsi_kode
+  type: text
+  deskripsi: Kode provinsi faskes pelapor
+- name: facility_kab_kota_kode
+  type: text
+  deskripsi: Kode kabupaten/kota faskes pelapor
+- name: created_at
+  type: datetime
+  deskripsi: Waktu dicatat
+scope:
+  postgres:
+    facility_id: ke."facilityId"
+    provinsi_kode: f."provinsiKode"
+    kabupaten_kota_kode: f."kabupatenKotaKode"
+  clickhouse:
+    facility_id: facilityId
+    provinsi_kode: facility_provinsi_kode
+    kabupaten_kota_kode: facility_kab_kota_kode
+contoh:
+- pertanyaan: Berapa KLB keracunan pangan per provinsi tahun 2025 dan total yang meninggal?
+  sql: SELECT provinsi, COUNT(event_id) AS jumlah_kejadian, SUM(jumlah_sakit) AS total_sakit, SUM(jumlah_meninggal) AS total_meninggal FROM dn_klb_events WHERE epi_year_kejadian = 2025 GROUP BY provinsi ORDER BY jumlah_kejadian DESC
+sql:
+  postgres: |
+    SELECT
+      ke.id AS event_id,
+      ke."sumberData" AS sumber_data,
+      ke."nomorEpid" AS nomor_epid,
+      ke."mingguEpidemiologi"::int AS minggu_epidemiologi,
+      ke."tanggalKejadian" AS tanggal_kejadian,
+      ke."tanggalLapor" AS tanggal_lapor,
+      EXTRACT(WEEK FROM ke."tanggalKejadian")::int AS epi_week_kejadian,
+      EXTRACT(ISOYEAR FROM ke."tanggalKejadian")::int AS epi_year_kejadian,
+      ke.provinsi AS provinsi,
+      ke."kabupatenKota" AS kabupaten_kota,
+      ke.kecamatan AS kecamatan,
+      ke."desaKelurahan" AS desa_kelurahan,
+      ke."namaPuskesmas" AS nama_puskesmas,
+      ke."tempatKejadian" AS tempat_kejadian,
+      ke."jenisPanganDicurigai" AS jenis_pangan_dicurigai,
+      ke."jumlahTerpapar" AS jumlah_terpapar,
+      ke."jumlahSakit" AS jumlah_sakit,
+      ke."jumlahDirawat" AS jumlah_dirawat,
+      ke."jumlahMeninggal" AS jumlah_meninggal,
+      ke.status AS status,
+      ke."facilityId" AS facility_id,
+      f."provinsiKode" AS facility_provinsi_kode,
+      f."kabupatenKotaKode" AS facility_kab_kota_kode,
+      ke."createdAt" AS created_at
+    FROM epi_intel.klb_events ke
+    LEFT JOIN master.facilities f ON f.id = ke."facilityId"
+    WHERE {scope_filter}
+  clickhouse: |
+    SELECT id AS event_id, sumberData AS sumber_data, nomorEpid AS nomor_epid, mingguEpidemiologi AS minggu_epidemiologi, tanggalKejadian AS tanggal_kejadian, tanggalLapor AS tanggal_lapor, epi_week_kejadian, epi_year_kejadian, provinsi, kabupatenKota AS kabupaten_kota, kecamatan, desaKelurahan AS desa_kelurahan, namaPuskesmas AS nama_puskesmas, tempatKejadian AS tempat_kejadian, jenisPanganDicurigai AS jenis_pangan_dicurigai, jumlahTerpapar AS jumlah_terpapar, jumlahSakit AS jumlah_sakit, jumlahDirawat AS jumlah_dirawat, jumlahMeninggal AS jumlah_meninggal, status, facilityId AS facility_id, facility_provinsi_kode, facility_kab_kota_kode, createdAt AS created_at FROM satu_data_penyakit.dn_klb_events WHERE {scope_filter}
+catatan: Kejadian tanpa facilityId tidak terlihat oleh pengguna ber-scope wilayah (hanya GLOBAL).

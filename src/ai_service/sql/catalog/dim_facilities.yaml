@@ -1,0 +1,77 @@
+# Virtual view 'dim_facilities' — katalog semantik Text-to-SQL ai-service.
+# DIHASILKAN scripts/gen_catalog.py — jangan edit manual; ubah generator lalu jalankan ulang.
+# Placeholder {scope_filter} diisi sistem (filter wilayah pengguna, parameter terikat).
+name: dim_facilities
+modul: Master faskes
+deskripsi: Daftar fasilitas pelayanan kesehatan (faskes) beserta wilayahnya. Pakai untuk menghitung jumlah faskes atau mencari nama/jenis faskes.
+grain: satu baris per faskes
+columns:
+- name: facility_id
+  type: id
+  deskripsi: ID faskes
+- name: facility_name
+  type: text
+  deskripsi: Nama faskes
+- name: jenis_sarana
+  type: text
+  deskripsi: Jenis sarana (mis. Rumah Sakit, Pusat Kesehatan Masyarakat, Laboratorium Kesehatan, Dinas Kesehatan, Kementerian & Lembaga)
+- name: sub_jenis
+  type: text
+  deskripsi: Sub jenis (mis. Puskesmas, Dinas Kesehatan Provinsi, Dinas Kesehatan Kota)
+- name: kategori_fasyankes
+  type: text
+  deskripsi: Kategori fasyankes
+- name: status_sarana
+  type: text
+  deskripsi: Status operasional sarana
+- name: is_active
+  type: bool
+  deskripsi: Faskes aktif
+- name: provinsi_kode
+  type: text
+  deskripsi: Kode provinsi
+- name: kab_kota_kode
+  type: text
+  deskripsi: Kode kabupaten/kota
+- name: kecamatan_kode
+  type: text
+  deskripsi: Kode kecamatan
+- name: provinsi_name
+  type: text
+  deskripsi: Nama provinsi
+- name: kab_kota_name
+  type: text
+  deskripsi: Nama kabupaten/kota
+scope:
+  postgres:
+    facility_id: f.id
+    provinsi_kode: f."provinsiKode"
+    kabupaten_kota_kode: f."kabupatenKotaKode"
+  clickhouse:
+    facility_id: id
+    provinsi_kode: provinsiKode
+    kabupaten_kota_kode: kabupatenKotaKode
+contoh:
+- pertanyaan: Berapa jumlah puskesmas per provinsi?
+  sql: SELECT provinsi_name AS provinsi, COUNT(facility_id) AS jumlah_puskesmas FROM dim_facilities WHERE sub_jenis = 'Puskesmas' AND is_active GROUP BY provinsi_name ORDER BY jumlah_puskesmas DESC
+sql:
+  postgres: |
+    SELECT
+      f.id AS facility_id,
+      f.name AS facility_name,
+      f."jenisSarana" AS jenis_sarana,
+      f."subJenis" AS sub_jenis,
+      f."kategoriFasyankes" AS kategori_fasyankes,
+      f."statusSarana" AS status_sarana,
+      f."isActive" AS is_active,
+      f."provinsiKode" AS provinsi_kode,
+      f."kabupatenKotaKode" AS kab_kota_kode,
+      f."kecamatanKode" AS kecamatan_kode,
+      fp.name AS provinsi_name,
+      fk.name AS kab_kota_name
+    FROM master.facilities f
+    LEFT JOIN master.regions fp ON fp.code = f."provinsiKode" AND fp.level = 'PROVINCE'
+    LEFT JOIN master.regions fk ON fk.code = f."kabupatenKotaKode" AND fk.level = 'CITY'
+    WHERE {scope_filter}
+  clickhouse: |
+    SELECT id AS facility_id, name AS facility_name, jenisSarana AS jenis_sarana, subJenis AS sub_jenis, kategoriFasyankes AS kategori_fasyankes, statusSarana AS status_sarana, isActive AS is_active, provinsiKode AS provinsi_kode, kabupatenKotaKode AS kab_kota_kode, kecamatanKode AS kecamatan_kode, provinsi_name, kab_kota_name FROM satu_data_penyakit.facilities_geo WHERE {scope_filter}

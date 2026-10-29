@@ -1,0 +1,94 @@
+# =============================================================
+# ai-service — environment DEV (server dev, berbagi network ssp2-dev-net dengan turborepo).
+#   docker compose --env-file .env -f docker/docker-compose.dev.ai-postgres.yaml up -d
+#   docker compose --env-file .env -f docker/docker-compose.dev.ai-service.yaml up -d --build
+# Image: CI meng-export IMAGE_TAG=v<pipeline IID>; fallback build lokal.
+# Blok `environment:` adalah allowlist — variabel baru WAJIB didaftarkan di sini.
+# BE dijangkau langsung via container backend dev; DB BE (analitik) via ssp2_dev_postgres
+# setelah DBA menjalankan scripts/grant-ai-ro.sql pada database satu_data_penyakit.
+# =============================================================
+name: ssp2_dev
+
+services:
+  ai:
+    image: ${DOCKER_IMAGE_AI:-registry.gitlab.com/GROUP/PROJECT/ai-service}:${IMAGE_TAG:-latest}
+    build:
+      context: ..
+    container_name: ssp2_dev_ai
+    restart: unless-stopped
+    environment:
+      APP_ENV: dev # dokumentasi Swagger aktif di /docs
+      PORT: 3000
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      CORS_ORIGIN: ${CORS_ORIGIN:-}
+      AI_DATABASE_URL: postgresql+asyncpg://postgres:${AI_PG_PASSWORD:?AI_PG_PASSWORD wajib diisi (samakan dengan compose ai-postgres)}@ssp2_dev_ai_postgres:5432/ai_service
+      AI_DB_POOL_SIZE: ${AI_DB_POOL_SIZE:-5}
+      AUTO_MIGRATE: ${AUTO_MIGRATE:-true}
+      JWT_SECRET: ${JWT_SECRET:-dev-jwt-secret-samakan-dengan-backend}
+      API_KEYS: ${API_KEYS:-dev-api-key}
+      ADMIN_API_KEYS: ${ADMIN_API_KEYS:-dev-admin-key}
+      BE_BASE_URL: ${BE_BASE_URL_DOCKER:-http://ssp2_dev_backend_1:3000}
+      BE_TIMEOUT_S: ${BE_TIMEOUT_S:-3}
+      PROFILE_CACHE_TTL_S: ${PROFILE_CACHE_TTL_S:-300}
+      AI_ANALYST_ROLES: ${AI_ANALYST_ROLES:-Administrator,Developer,Admin Pusdatin,Admin Kemenkes,Operator Kemenkes,Eksekutif Kemenkes,Eksekutif Provinsi,Eksekutif KabKota,Eksekutif Faskes}
+      AI_ANALYST_PERMISSION: ${AI_ANALYST_PERMISSION:-menu_epi_intel:ai}
+      INTERNAL_UNKNOWN_CHANNEL_POLICY: ${INTERNAL_UNKNOWN_CHANNEL_POLICY:-public}
+      LLM_BASE_URL: ${LLM_BASE_URL:-https://api.openai.com/v1}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-gpt-4o-mini}
+      LLM_SQL_MODEL: ${LLM_SQL_MODEL:-}
+      LLM_TEMPERATURE: ${LLM_TEMPERATURE:-0}
+      LLM_TIMEOUT_S: ${LLM_TIMEOUT_S:-60}
+      LLM_MAX_CONCURRENCY: ${LLM_MAX_CONCURRENCY:-8}
+      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-}
+      EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-3-small}
+      EMBEDDING_DIM: ${EMBEDDING_DIM:-1536}
+      EMBEDDING_SEND_DIMENSIONS: ${EMBEDDING_SEND_DIMENSIONS:-true}
+      RAG_CHUNK_SIZE: ${RAG_CHUNK_SIZE:-1000}
+      RAG_CHUNK_OVERLAP: ${RAG_CHUNK_OVERLAP:-150}
+      RAG_TOP_K: ${RAG_TOP_K:-6}
+      RAG_FETCH_K: ${RAG_FETCH_K:-20}
+      RAG_RRF_K: ${RAG_RRF_K:-60}
+      RAG_PREFETCH: ${RAG_PREFETCH:-true}
+      RERANK_ENABLED: ${RERANK_ENABLED:-false}
+      UPLOAD_DIR: /data/uploads
+      INGEST_MAX_FILE_MB: ${INGEST_MAX_FILE_MB:-25}
+      CHAT_HISTORY_MESSAGES: ${CHAT_HISTORY_MESSAGES:-16}
+      CHAT_HISTORY_MAX_TOKENS: ${CHAT_HISTORY_MAX_TOKENS:-4000}
+      CHAT_TIMEOUT_S: ${CHAT_TIMEOUT_S:-90}
+      CHAT_MAX_QUERY_CHARS: ${CHAT_MAX_QUERY_CHARS:-2000}
+      AGENT_MAX_TOOL_CALLS: ${AGENT_MAX_TOOL_CALLS:-6}
+      SSE_HEARTBEAT_S: ${SSE_HEARTBEAT_S:-15}
+      RATE_LIMIT_CHAT_PER_MIN: ${RATE_LIMIT_CHAT_PER_MIN:-20}
+      RATE_LIMIT_IP_PER_MIN: ${RATE_LIMIT_IP_PER_MIN:-60}
+      INTENT_FORCE_TOOL: ${INTENT_FORCE_TOOL:-true}
+      SQL_BACKEND: ${SQL_BACKEND:-postgres}
+      ANALYTICS_PG_DSN: ${ANALYTICS_PG_DSN_DOCKER:-postgresql://ai_ro:${AI_RO_PASSWORD:-ai_ro}@ssp2_dev_postgres:5432/satu_data_penyakit}
+      ANALYTICS_PG_POOL_SIZE: ${ANALYTICS_PG_POOL_SIZE:-3}
+      ANALYTICS_CH_URL: ${ANALYTICS_CH_URL:-http://ssp2_dev_clickhouse:8123}
+      ANALYTICS_CH_USER: ${ANALYTICS_CH_USER:-app_ro}
+      ANALYTICS_CH_PASSWORD: ${ANALYTICS_CH_PASSWORD:-}
+      ANALYTICS_CH_DB: ${ANALYTICS_CH_DB:-satu_data_penyakit}
+      SQL_STATEMENT_TIMEOUT_MS: ${SQL_STATEMENT_TIMEOUT_MS:-15000}
+      SQL_MAX_ROWS: ${SQL_MAX_ROWS:-200}
+      SQL_LLM_ROWS: ${SQL_LLM_ROWS:-50}
+      SQL_MAX_RETRIES: ${SQL_MAX_RETRIES:-2}
+    deploy:
+      resources:
+        limits:
+          memory: ${AI_MEM_LIMIT:-1g}
+    ports:
+      - "${AI_PORT:-3040}:3000"
+    volumes:
+      - ai-dev-uploads:/data/uploads
+    networks:
+      - ssp2-dev-net
+
+volumes:
+  ai-dev-uploads:
+
+networks:
+  ssp2-dev-net:
+    name: ssp2-dev-net
+    external: true

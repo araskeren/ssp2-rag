@@ -1,0 +1,97 @@
+# =============================================================
+# ai-service — environment PROD: image dari registry (tanpa build), replica + range port host
+# untuk upstream nginx (pola BE 3002-3003, notification 3004-3005 → ai 3006-3007).
+#   docker compose --env-file .env -f docker/docker-compose.prod.ai-service.yaml pull
+#   docker compose --env-file .env -f docker/docker-compose.prod.ai-service.yaml up -d
+# Rahasia WAJIB di .env (compose sengaja gagal parse bila kosong): DOCKER_IMAGE_AI, JWT_SECRET,
+# API_KEYS, ADMIN_API_KEYS, LLM_BASE_URL, AI_PG_PASSWORD, AI_RO_PASSWORD (atau ANALYTICS_PG_DSN penuh).
+# =============================================================
+name: ssp2_prod
+
+services:
+  ai:
+    image: ${DOCKER_IMAGE_AI:?DOCKER_IMAGE_AI wajib diisi (mis. registry.gitlab.com/GRUP/PROYEK/ai-service)}:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    deploy:
+      replicas: ${AI_REPLICAS:-2}
+      resources:
+        limits:
+          memory: ${AI_MEM_LIMIT:-1g}
+    environment:
+      APP_ENV: prod # dokumentasi Swagger DINONAKTIFKAN (hanya local/dev)
+      PORT: 3000
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      AI_DATABASE_URL: ${AI_DATABASE_URL:-postgresql+asyncpg://postgres:${AI_PG_PASSWORD:?AI_PG_PASSWORD wajib diisi (atau set AI_DATABASE_URL penuh)}@ssp2_prod_ai_postgres:5432/ai_service}
+      AI_DB_POOL_SIZE: ${AI_DB_POOL_SIZE:-5}
+      AUTO_MIGRATE: ${AUTO_MIGRATE:-true}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET wajib diisi (samakan dengan backend)}
+      API_KEYS: ${API_KEYS:?API_KEYS wajib diisi di .env produksi}
+      ADMIN_API_KEYS: ${ADMIN_API_KEYS:?ADMIN_API_KEYS wajib diisi di .env produksi}
+      BE_BASE_URL: ${BE_BASE_URL:-http://ssp2_prod_nginx/api/v1}
+      BE_TIMEOUT_S: ${BE_TIMEOUT_S:-3}
+      PROFILE_CACHE_TTL_S: ${PROFILE_CACHE_TTL_S:-300}
+      AI_ANALYST_ROLES: ${AI_ANALYST_ROLES:-Administrator,Developer,Admin Pusdatin,Admin Kemenkes,Operator Kemenkes,Eksekutif Kemenkes,Eksekutif Provinsi,Eksekutif KabKota,Eksekutif Faskes}
+      AI_ANALYST_PERMISSION: ${AI_ANALYST_PERMISSION:-menu_epi_intel:ai}
+      INTERNAL_UNKNOWN_CHANNEL_POLICY: ${INTERNAL_UNKNOWN_CHANNEL_POLICY:-public}
+      LLM_BASE_URL: ${LLM_BASE_URL:?LLM_BASE_URL wajib diisi (endpoint OpenAI-compatible on-prem)}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:?LLM_MODEL wajib diisi}
+      LLM_SQL_MODEL: ${LLM_SQL_MODEL:-}
+      LLM_TEMPERATURE: ${LLM_TEMPERATURE:-0}
+      LLM_TIMEOUT_S: ${LLM_TIMEOUT_S:-60}
+      LLM_MAX_CONCURRENCY: ${LLM_MAX_CONCURRENCY:-8}
+      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-}
+      EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:?EMBEDDING_MODEL wajib diisi}
+      EMBEDDING_DIM: ${EMBEDDING_DIM:?EMBEDDING_DIM wajib diisi}
+      EMBEDDING_SEND_DIMENSIONS: ${EMBEDDING_SEND_DIMENSIONS:-false}
+      RAG_CHUNK_SIZE: ${RAG_CHUNK_SIZE:-1000}
+      RAG_CHUNK_OVERLAP: ${RAG_CHUNK_OVERLAP:-150}
+      RAG_TOP_K: ${RAG_TOP_K:-6}
+      RAG_FETCH_K: ${RAG_FETCH_K:-20}
+      RAG_RRF_K: ${RAG_RRF_K:-60}
+      RAG_PREFETCH: ${RAG_PREFETCH:-true}
+      RERANK_ENABLED: ${RERANK_ENABLED:-false}
+      UPLOAD_DIR: /data/uploads
+      INGEST_MAX_FILE_MB: ${INGEST_MAX_FILE_MB:-25}
+      CHAT_HISTORY_MESSAGES: ${CHAT_HISTORY_MESSAGES:-16}
+      CHAT_HISTORY_MAX_TOKENS: ${CHAT_HISTORY_MAX_TOKENS:-4000}
+      CHAT_TIMEOUT_S: ${CHAT_TIMEOUT_S:-90}
+      CHAT_MAX_QUERY_CHARS: ${CHAT_MAX_QUERY_CHARS:-2000}
+      AGENT_MAX_TOOL_CALLS: ${AGENT_MAX_TOOL_CALLS:-6}
+      SSE_HEARTBEAT_S: ${SSE_HEARTBEAT_S:-15}
+      RATE_LIMIT_CHAT_PER_MIN: ${RATE_LIMIT_CHAT_PER_MIN:-20}
+      RATE_LIMIT_IP_PER_MIN: ${RATE_LIMIT_IP_PER_MIN:-60}
+      INTENT_FORCE_TOOL: ${INTENT_FORCE_TOOL:-true}
+      SQL_BACKEND: ${SQL_BACKEND:-postgres}
+      ANALYTICS_PG_DSN: ${ANALYTICS_PG_DSN:-postgresql://ai_ro:${AI_RO_PASSWORD:?AI_RO_PASSWORD wajib diisi (atau set ANALYTICS_PG_DSN penuh)}@ssp2_prod_postgres:5432/satu_data_penyakit}
+      ANALYTICS_PG_POOL_SIZE: ${ANALYTICS_PG_POOL_SIZE:-3}
+      ANALYTICS_CH_URL: ${ANALYTICS_CH_URL:-http://ssp2_prod_clickhouse:8123}
+      ANALYTICS_CH_USER: ${ANALYTICS_CH_USER:-app_ro}
+      ANALYTICS_CH_PASSWORD: ${ANALYTICS_CH_PASSWORD:-}
+      ANALYTICS_CH_DB: ${ANALYTICS_CH_DB:-satu_data_penyakit}
+      SQL_STATEMENT_TIMEOUT_MS: ${SQL_STATEMENT_TIMEOUT_MS:-15000}
+      SQL_MAX_ROWS: ${SQL_MAX_ROWS:-200}
+      SQL_LLM_ROWS: ${SQL_LLM_ROWS:-50}
+      SQL_MAX_RETRIES: ${SQL_MAX_RETRIES:-2}
+    ports:
+      - "${AI_PORT_RANGE:-3006-3007}:3000"
+    volumes:
+      - ai-prod-uploads:/data/uploads
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+    networks:
+      ssp2-prod-net:
+        aliases:
+          - ssp2_prod_ai
+
+volumes:
+  ai-prod-uploads:
+
+networks:
+  ssp2-prod-net:
+    name: ssp2-prod-net
+    external: true

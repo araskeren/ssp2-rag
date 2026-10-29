@@ -1,0 +1,254 @@
+# Virtual view 'dn_ispa_surveilans' — katalog semantik Text-to-SQL ai-service.
+# DIHASILKAN scripts/gen_catalog.py — jangan edit manual; ubah generator lalu jalankan ulang.
+# Placeholder {scope_filter} diisi sistem (filter wilayah pengguna, parameter terikat).
+name: dn_ispa_surveilans
+modul: ISPA/Pneumonia
+deskripsi: Kasus surveilans ISPA (pneumonia balita dan ISPA berat) beserta spesimen dan hasil laboratoriumnya.
+grain: 'satu baris per kasus x spesimen x hasil laboratorium (LEFT JOIN: kasus tanpa spesimen tetap muncul dengan specimen_id NULL)'
+hitung:
+  kasus: COUNT(DISTINCT record_id)
+  spesimen: COUNT(DISTINCT specimen_id)
+  hasil_lab: COUNT(test_result_id)
+columns:
+- name: record_id
+  type: id
+  deskripsi: ID kasus (opaque)
+- name: record_date
+  type: date
+  deskripsi: Tanggal kasus dicatat di aplikasi
+- name: epi_week_record
+  type: int
+  deskripsi: Minggu epidemiologi ISO dari record_date
+- name: epi_year_record
+  type: int
+  deskripsi: Tahun ISO dari record_date
+- name: record_status
+  type: text
+  deskripsi: Status kasus ISPA/Pneumonia
+  nilai:
+  - Suspek
+  - Probable
+  - Konfirmasi
+- name: current_stage
+  type: text
+  deskripsi: Tahap alur kasus
+  nilai:
+  - Pendaftaran
+  - Laboratorium
+  - Verifikasi
+  - Pemulangan
+  - Selesai
+- name: is_active
+  type: bool
+  deskripsi: Kasus aktif (belum dihapus)
+- name: facility_id
+  type: id
+  deskripsi: ID faskes pelapor
+- name: facility_name
+  type: text
+  deskripsi: Nama faskes pelapor
+- name: facility_provinsi_kode
+  type: text
+  deskripsi: Kode provinsi faskes pelapor
+- name: facility_kab_kota_kode
+  type: text
+  deskripsi: Kode kabupaten/kota faskes pelapor
+- name: facility_provinsi_name
+  type: text
+  deskripsi: Nama provinsi faskes pelapor
+- name: facility_kab_kota_name
+  type: text
+  deskripsi: Nama kabupaten/kota faskes pelapor
+- name: patient_sex
+  type: text
+  deskripsi: Jenis kelamin pasien
+  nilai:
+  - MALE
+  - FEMALE
+- name: patient_age_years
+  type: int
+  deskripsi: Umur pasien dalam tahun (dihitung hari ini)
+- name: patient_provinsi_kode
+  type: text
+  deskripsi: Kode provinsi domisili pasien
+- name: patient_kab_kota_kode
+  type: text
+  deskripsi: Kode kabupaten/kota domisili pasien
+- name: patient_provinsi_name
+  type: text
+  deskripsi: Nama provinsi domisili pasien
+- name: patient_kab_kota_name
+  type: text
+  deskripsi: Nama kabupaten/kota domisili pasien
+- name: specimen_id
+  type: id
+  deskripsi: ID spesimen (NULL bila kasus belum punya spesimen)
+- name: nomor_spesimen
+  type: text
+  deskripsi: Nomor label spesimen
+- name: jenis_spesimen
+  type: text
+  deskripsi: Jenis spesimen
+- name: tujuan_pemeriksaan
+  type: text
+  deskripsi: Tujuan pemeriksaan spesimen
+- name: tanggal_ambil
+  type: date
+  deskripsi: Tanggal pengambilan spesimen
+- name: tanggal_pengiriman
+  type: date
+  deskripsi: Tanggal pengiriman spesimen ke laboratorium
+- name: tanggal_penerimaan
+  type: date
+  deskripsi: Tanggal spesimen diterima laboratorium
+- name: specimen_status
+  type: text
+  deskripsi: Status spesimen
+  nilai:
+  - PENDING
+  - RECEIVED
+  - REJECTED
+- name: alasan_penolakan
+  type: text
+  deskripsi: Alasan spesimen ditolak laboratorium
+- name: lab_tujuan_id
+  type: id
+  deskripsi: ID laboratorium tujuan
+- name: lab_tujuan_name
+  type: text
+  deskripsi: Nama laboratorium tujuan
+- name: epi_week_ambil
+  type: int
+  deskripsi: Minggu epidemiologi ISO tanggal_ambil
+- name: epi_year_ambil
+  type: int
+  deskripsi: Tahun ISO tanggal_ambil
+- name: test_result_id
+  type: id
+  deskripsi: ID hasil pemeriksaan laboratorium (NULL bila belum ada hasil)
+- name: jenis_pemeriksaan
+  type: text
+  deskripsi: Jenis pemeriksaan laboratorium (mis. RT-PCR)
+- name: kesimpulan
+  type: text
+  deskripsi: Kesimpulan/hasil laboratorium
+  nilai:
+  - POSITIF_COVID
+  - POSITIF_AGEN_LAIN
+  - TIDAK_TERIDENTIFIKASI
+- name: tanggal_periksa
+  type: date
+  deskripsi: Tanggal pemeriksaan laboratorium
+- name: tanggal_hasil
+  type: date
+  deskripsi: Tanggal hasil keluar (NULL bila modul tidak mencatat)
+- name: tanggal_hasil_efektif
+  type: date
+  deskripsi: tanggal_hasil bila ada, bila tidak tanggal_periksa (dipakai laporan)
+- name: epi_week_hasil
+  type: int
+  deskripsi: Minggu epidemiologi ISO tanggal_hasil_efektif
+- name: epi_year_hasil
+  type: int
+  deskripsi: Tahun ISO tanggal_hasil_efektif
+- name: klasifikasi
+  type: text
+  deskripsi: Klasifikasi ISPA (mis. Pneumonia, Pneumonia Berat, Batuk Bukan Pneumonia)
+- name: tanggal_kunjungan
+  type: date
+  deskripsi: Tanggal kunjungan pasien
+- name: tanggal_mulai_gejala
+  type: date
+  deskripsi: Tanggal onset gejala
+- name: suhu_tubuh
+  type: numeric
+  deskripsi: Suhu tubuh saat kunjungan (°C)
+- name: kondisi_akhir
+  type: text
+  deskripsi: Kondisi akhir pasien
+- name: diagnosa_akhir
+  type: text
+  deskripsi: Diagnosis akhir
+- name: tanggal_keluar
+  type: date
+  deskripsi: Tanggal pasien keluar perawatan
+scope:
+  postgres:
+    facility_id: r."facilityId"
+    provinsi_kode: f."provinsiKode"
+    kabupaten_kota_kode: f."kabupatenKotaKode"
+  clickhouse:
+    facility_id: facility_id
+    provinsi_kode: facility_provinsi_kode
+    kabupaten_kota_kode: facility_kab_kota_kode
+contoh:
+- pertanyaan: Berapa jumlah kasus ISPA per provinsi pada tahun 2025?
+  sql: SELECT facility_provinsi_name AS provinsi, COUNT(DISTINCT record_id) AS jumlah_kasus FROM dn_ispa_surveilans WHERE epi_year_record = 2025 GROUP BY facility_provinsi_name ORDER BY jumlah_kasus DESC
+- pertanyaan: Tren mingguan kasus ISPA tahun 2025
+  sql: SELECT epi_year_record AS tahun, epi_week_record AS minggu_epi, COUNT(DISTINCT record_id) AS jumlah_kasus FROM dn_ispa_surveilans WHERE epi_year_record = 2025 GROUP BY epi_year_record, epi_week_record ORDER BY tahun, minggu_epi
+- pertanyaan: Berapa kasus pneumonia balita per kabupaten/kota tahun 2025?
+  sql: SELECT facility_kab_kota_name AS kabupaten_kota, COUNT(DISTINCT record_id) AS jumlah_kasus FROM dn_ispa_surveilans WHERE epi_year_record = 2025 AND LOWER(klasifikasi) LIKE '%pneumonia%' AND patient_age_years < 5 GROUP BY facility_kab_kota_name ORDER BY jumlah_kasus DESC
+sql:
+  postgres: |
+    SELECT
+      r.id AS record_id,
+      r."createdAt"::date AS record_date,
+      EXTRACT(WEEK FROM r."createdAt")::int AS epi_week_record,
+      EXTRACT(ISOYEAR FROM r."createdAt")::int AS epi_year_record,
+      r.status AS record_status,
+      r."currentStage" AS current_stage,
+      r."isActive" AS is_active,
+      r."facilityId" AS facility_id,
+      f.name AS facility_name,
+      f."provinsiKode" AS facility_provinsi_kode,
+      f."kabupatenKotaKode" AS facility_kab_kota_kode,
+      fp.name AS facility_provinsi_name,
+      fk.name AS facility_kab_kota_name,
+      p.sex AS patient_sex,
+      EXTRACT(YEAR FROM age(p."birthDate"))::int AS patient_age_years,
+      p."primaryProvinceCode" AS patient_provinsi_kode,
+      p."primaryCityCode" AS patient_kab_kota_kode,
+      pp.name AS patient_provinsi_name,
+      pk.name AS patient_kab_kota_name,
+      s.id AS specimen_id,
+      s.nomor_spesimen AS nomor_spesimen,
+      s.jenis_spesimen AS jenis_spesimen,
+      s.tujuan_pemeriksaan AS tujuan_pemeriksaan,
+      s.tanggal_ambil AS tanggal_ambil,
+      s.tanggal_pengiriman AS tanggal_pengiriman,
+      s.tanggal_penerimaan AS tanggal_penerimaan,
+      s.status AS specimen_status,
+      s.alasan_penolakan AS alasan_penolakan,
+      s.lab_tujuan_id AS lab_tujuan_id,
+      lg.name AS lab_tujuan_name,
+      EXTRACT(WEEK FROM s.tanggal_ambil)::int AS epi_week_ambil,
+      EXTRACT(ISOYEAR FROM s.tanggal_ambil)::int AS epi_year_ambil,
+      t.id AS test_result_id,
+      t."jenisPemeriksaan" AS jenis_pemeriksaan,
+      t.kesimpulan AS kesimpulan,
+      t.tanggal_periksa AS tanggal_periksa,
+      t.tanggal_hasil AS tanggal_hasil,
+      COALESCE(t.tanggal_hasil, t.tanggal_periksa) AS tanggal_hasil_efektif,
+      EXTRACT(WEEK FROM COALESCE(t.tanggal_hasil, t.tanggal_periksa))::int AS epi_week_hasil,
+      EXTRACT(ISOYEAR FROM COALESCE(t.tanggal_hasil, t.tanggal_periksa))::int AS epi_year_hasil,
+      r.klasifikasi AS klasifikasi,
+      r.tanggal_kunjungan AS tanggal_kunjungan,
+      r.tanggal_mulai_gejala AS tanggal_mulai_gejala,
+      r.suhu_tubuh AS suhu_tubuh,
+      r.kondisi_akhir AS kondisi_akhir,
+      r.diagnosa_akhir AS diagnosa_akhir,
+      r.tanggal_keluar AS tanggal_keluar
+    FROM ispa.records r
+    LEFT JOIN ispa.specimens s ON s."recordId" = r.id
+    LEFT JOIN ispa.test_results t ON t."specimenId" = s.id
+    LEFT JOIN master.patients p ON p.id = r."patientId"
+    LEFT JOIN master.facilities f ON f.id = r."facilityId"
+    LEFT JOIN master.facilities lg ON lg.id = s.lab_tujuan_id
+    LEFT JOIN master.regions fp ON fp.code = f."provinsiKode" AND fp.level = 'PROVINCE'
+    LEFT JOIN master.regions fk ON fk.code = f."kabupatenKotaKode" AND fk.level = 'CITY'
+    LEFT JOIN master.regions pp ON pp.code = p."primaryProvinceCode" AND pp.level = 'PROVINCE'
+    LEFT JOIN master.regions pk ON pk.code = p."primaryCityCode" AND pk.level = 'CITY'
+    WHERE {scope_filter}
+  clickhouse: |
+    SELECT * EXCEPT (patient_name, patient_birth_date) FROM satu_data_penyakit.dn_ispa_surveilans WHERE {scope_filter}
+catatan: Wilayah pelaporan mengikuti faskes pelapor (facility_*); wilayah domisili pasien ada di patient_*.

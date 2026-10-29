@@ -1,0 +1,84 @@
+[project]
+name = "ai-service"
+version = "0.1.0"
+description = "Agentic RAG chatbot + Text-to-SQL dengan RBAC untuk Satu Data Penyakit"
+readme = "README.md"
+authors = [
+    { name = "Damis Bachtiar", email = "damis.bachtiar@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "alembic>=1.20.1",
+    "asyncpg>=0.32.0",
+    "fastapi>=0.162.0",
+    "httpx>=0.28.1",
+    "langchain>=1.0",
+    "langchain-core>=1.7.0",
+    "langchain-openai>=1.7.3",
+    "langchain-text-splitters>=1.1.3",
+    "pgvector>=0.5.1",
+    "pydantic-settings>=2.16.2",
+    "pyjwt>=2.15.1",
+    "pypdf>=6.21.3",
+    "python-docx>=1.2.0",
+    "python-multipart>=0.0.32",
+    "pyyaml>=6.0.3",
+    "sqlalchemy[asyncio]>=2.1.6",
+    "sqlglot>=30.25.0",
+    "structlog>=26.1.0",
+    "tenacity>=9.2.1",
+    "typer>=0.27.3",
+    "uvicorn[standard]>=0.54.0",
+]
+
+[project.scripts]
+ai-service = "ai_service.cli:app"
+
+[project.optional-dependencies]
+rerank = [
+    "sentence-transformers>=6.2.0",
+]
+clickhouse = [
+    "clickhouse-connect>=1.11.0",
+]
+
+[build-system]
+requires = ["uv_build>=0.10.12,<0.11.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "numpy>=2.5.4",
+    "pytest>=9.2.0",
+    "pytest-asyncio>=1.4.1",
+    "respx>=0.23.1",
+    "ruff>=0.17.3",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "ASYNC"]
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["ASYNC230", "ASYNC240"]
+"scripts/**" = ["E402"]
+
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = [
+    "fastapi.Depends", "fastapi.File", "fastapi.Form", "fastapi.Query", "fastapi.Header", "fastapi.Body",
+    "typer.Argument", "typer.Option",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+markers = [
+    "pg: butuh Postgres (env AI_TEST_DATABASE_URL)",
+    "llm: butuh LLM nyata (env LLM_API_KEY)",
+]

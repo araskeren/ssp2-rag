@@ -1,0 +1,42 @@
+# =============================================================
+# ai-service — Postgres (pgvector) milik ai-service, environment DEV.
+# Bergabung ke network bersama turborepo `ssp2-dev-net` (dibuat compose turborepo / docker network create).
+#   docker compose --env-file .env -f docker/docker-compose.dev.ai-postgres.yaml up -d
+# .env wajib memuat AI_PG_PASSWORD (dan AI_RO_PASSWORD untuk fixture lokal bila dipakai).
+# =============================================================
+name: ssp2_dev
+
+services:
+  ai-postgres:
+    image: pgvector/pgvector:pg18
+    container_name: ssp2_dev_ai_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${AI_PG_PASSWORD:?AI_PG_PASSWORD wajib diisi}
+      POSTGRES_DB: postgres
+      AI_RO_PASSWORD: ${AI_RO_PASSWORD:-ai_ro}
+    deploy:
+      resources:
+        limits:
+          memory: ${AI_PG_MEM_LIMIT:-512m}
+    ports:
+      - "${AI_PG_HOST_PORT:-3150}:5432"
+    volumes:
+      - ai-dev-pg-data:/var/lib/postgresql
+      - ./ai-postgres-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+    networks:
+      - ssp2-dev-net
+
+volumes:
+  ai-dev-pg-data:
+
+networks:
+  ssp2-dev-net:
+    name: ssp2-dev-net
+    external: true

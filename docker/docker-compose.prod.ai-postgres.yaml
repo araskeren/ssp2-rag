@@ -1,0 +1,47 @@
+# =============================================================
+# ai-service — Postgres (pgvector) milik ai-service, environment PROD.
+# Port hanya di loopback host (akses operator via SSH tunnel). Backup: pg_dump ai_service.
+#   docker compose --env-file .env -f docker/docker-compose.prod.ai-postgres.yaml up -d
+# =============================================================
+name: ssp2_prod
+
+services:
+  ai-postgres:
+    image: pgvector/pgvector:pg18
+    container_name: ssp2_prod_ai_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${AI_PG_PASSWORD:?AI_PG_PASSWORD wajib diisi di .env produksi}
+      POSTGRES_DB: postgres
+    deploy:
+      resources:
+        limits:
+          memory: ${AI_PG_MEM_LIMIT:-1g}
+    ports:
+      - "127.0.0.1:${AI_PG_HOST_PORT:-3312}:5432"
+    volumes:
+      - ai-prod-pg-data:/var/lib/postgresql
+      - ./ai-postgres-init/01-databases.sh:/docker-entrypoint-initdb.d/01-databases.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+    networks:
+      ssp2-prod-net:
+        aliases:
+          - ssp2_prod_ai_postgres
+
+volumes:
+  ai-prod-pg-data:
+
+networks:
+  ssp2-prod-net:
+    name: ssp2-prod-net
+    external: true

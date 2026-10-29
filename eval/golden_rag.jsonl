@@ -1,0 +1,10 @@
+{"id": "rag-01", "question": "Apa definisi operasional SARI?", "expected": [{"filename": "panduan-pelaporan-sari.md"}], "keypoints": ["demam atau suhu ≥ 38 °C", "batuk", "onset 10 hari", "rawat inap"]}
+{"id": "rag-02", "question": "Bagaimana langkah pendaftaran kasus SARI di aplikasi?", "expected": [{"filename": "panduan-pelaporan-sari.md"}], "keypoints": ["menu SARI → Kasus → Tambah Kasus", "cari pasien berdasarkan NIK", "faskes pelapor", "status Suspek SARI"]}
+{"id": "rag-03", "question": "Berapa lama batas pengambilan spesimen setelah onset gejala dan jenis spesimen apa yang diterima?", "expected": [{"filename": "panduan-pelaporan-sari.md"}], "keypoints": ["maksimal 3 hari", "swab nasofaring", "swab orofaring", "aspirat trakea"]}
+{"id": "rag-04", "question": "Pada suhu berapa spesimen SARI dikirim ke laboratorium?", "expected": [{"filename": "panduan-pelaporan-sari.md"}], "keypoints": ["2–8 °C"]}
+{"id": "rag-05", "question": "Apa yang terjadi bila hasil laboratorium positif?", "expected": [{"filename": "panduan-pelaporan-sari.md"}], "keypoints": ["status Konfirmasi", "tahap Verifikasi"]}
+{"id": "rag-06", "question": "Kapan batas pengiriman laporan agregat mingguan SARI?", "expected": [{"filename": "panduan-pelaporan-sari.md"}], "keypoints": ["Selasa minggu berikutnya", "ditandai terlambat"]}
+{"id": "rag-07", "question": "Siapa yang berwenang memverifikasi akhir kasus SARI?", "expected": [{"filename": "panduan-pelaporan-sari.md"}], "keypoints": ["Admin Provinsi"]}
+{"id": "rag-08", "question": "Kelompok umur apa saja yang dipakai pada laporan agregat?", "expected": [{"filename": "panduan-pelaporan-sari.md"}], "keypoints": ["< 1 tahun", "1–4", "5–9", "10–14", "15–59", "≥ 60"]}
+{"id": "rag-nf-01", "question": "Berapa tarif reagen RT-PCR yang ditanggung BPJS?", "expected": [], "must_not_find": true}
+{"id": "rag-nf-02", "question": "Bagaimana cara mengganti kata sandi akun aplikasi?", "expected": [], "must_not_find": true}

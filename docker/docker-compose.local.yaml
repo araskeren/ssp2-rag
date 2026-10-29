@@ -1,0 +1,116 @@
+# =============================================================
+# ai-service — environment LOCAL (laptop): service + Postgres pgvector dalam satu file,
+# network sendiri, tanpa prasyarat. Pola meniru notification-service/docker/docker-compose.local.yaml.
+#
+#   cp .env.example .env     # isi LLM_API_KEY, samakan JWT_SECRET dengan BE
+#   docker compose --env-file .env -f docker/docker-compose.local.yaml up -d --build
+#   curl http://localhost:3040/readyz
+#
+# BE native di host dijangkau via host.docker.internal:3001 (BE_BASE_URL di bawah).
+# Blok `environment:` adalah allowlist — variabel baru WAJIB didaftarkan di sini.
+# =============================================================
+name: ssp2_dev
+
+services:
+  ai:
+    build:
+      context: ..
+    container_name: ssp2_dev_ai
+    restart: unless-stopped
+    environment:
+      APP_ENV: local # dokumentasi Swagger aktif di http://localhost:3040/docs
+      PORT: 3000
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      CORS_ORIGIN: ${CORS_ORIGIN:-}
+      AI_DATABASE_URL: postgresql+asyncpg://postgres:${AI_PG_PASSWORD:-postgres}@ssp2_dev_ai_postgres:5432/ai_service
+      AI_DB_POOL_SIZE: ${AI_DB_POOL_SIZE:-5}
+      AUTO_MIGRATE: ${AUTO_MIGRATE:-true}
+      JWT_SECRET: ${JWT_SECRET:-dev-jwt-secret-samakan-dengan-backend}
+      API_KEYS: ${API_KEYS:-dev-api-key}
+      ADMIN_API_KEYS: ${ADMIN_API_KEYS:-dev-admin-key}
+      BE_BASE_URL: ${BE_BASE_URL_DOCKER:-http://host.docker.internal:3001}
+      BE_TIMEOUT_S: ${BE_TIMEOUT_S:-3}
+      PROFILE_CACHE_TTL_S: ${PROFILE_CACHE_TTL_S:-300}
+      AI_ANALYST_ROLES: ${AI_ANALYST_ROLES:-Administrator,Developer,Admin Pusdatin,Admin Kemenkes,Operator Kemenkes,Eksekutif Kemenkes,Eksekutif Provinsi,Eksekutif KabKota,Eksekutif Faskes}
+      AI_ANALYST_PERMISSION: ${AI_ANALYST_PERMISSION:-menu_epi_intel:ai}
+      INTERNAL_UNKNOWN_CHANNEL_POLICY: ${INTERNAL_UNKNOWN_CHANNEL_POLICY:-public}
+      LLM_BASE_URL: ${LLM_BASE_URL:-https://api.openai.com/v1}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-gpt-4o-mini}
+      LLM_SQL_MODEL: ${LLM_SQL_MODEL:-}
+      LLM_TEMPERATURE: ${LLM_TEMPERATURE:-0}
+      LLM_TIMEOUT_S: ${LLM_TIMEOUT_S:-60}
+      LLM_MAX_CONCURRENCY: ${LLM_MAX_CONCURRENCY:-8}
+      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-}
+      EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-3-small}
+      EMBEDDING_DIM: ${EMBEDDING_DIM:-1536}
+      EMBEDDING_SEND_DIMENSIONS: ${EMBEDDING_SEND_DIMENSIONS:-true}
+      RAG_CHUNK_SIZE: ${RAG_CHUNK_SIZE:-1000}
+      RAG_CHUNK_OVERLAP: ${RAG_CHUNK_OVERLAP:-150}
+      RAG_TOP_K: ${RAG_TOP_K:-6}
+      RAG_FETCH_K: ${RAG_FETCH_K:-20}
+      RAG_RRF_K: ${RAG_RRF_K:-60}
+      RAG_PREFETCH: ${RAG_PREFETCH:-true}
+      RERANK_ENABLED: ${RERANK_ENABLED:-false}
+      UPLOAD_DIR: /data/uploads
+      INGEST_MAX_FILE_MB: ${INGEST_MAX_FILE_MB:-25}
+      CHAT_HISTORY_MESSAGES: ${CHAT_HISTORY_MESSAGES:-16}
+      CHAT_HISTORY_MAX_TOKENS: ${CHAT_HISTORY_MAX_TOKENS:-4000}
+      CHAT_TIMEOUT_S: ${CHAT_TIMEOUT_S:-90}
+      CHAT_MAX_QUERY_CHARS: ${CHAT_MAX_QUERY_CHARS:-2000}
+      AGENT_MAX_TOOL_CALLS: ${AGENT_MAX_TOOL_CALLS:-6}
+      SSE_HEARTBEAT_S: ${SSE_HEARTBEAT_S:-15}
+      RATE_LIMIT_CHAT_PER_MIN: ${RATE_LIMIT_CHAT_PER_MIN:-20}
+      RATE_LIMIT_IP_PER_MIN: ${RATE_LIMIT_IP_PER_MIN:-60}
+      INTENT_FORCE_TOOL: ${INTENT_FORCE_TOOL:-true}
+      SQL_BACKEND: ${SQL_BACKEND:-postgres}
+      ANALYTICS_PG_DSN: postgresql://ai_ro:${AI_RO_PASSWORD:-ai_ro}@ssp2_dev_ai_postgres:5432/sdp_fixture
+      ANALYTICS_PG_POOL_SIZE: ${ANALYTICS_PG_POOL_SIZE:-3}
+      SQL_STATEMENT_TIMEOUT_MS: ${SQL_STATEMENT_TIMEOUT_MS:-15000}
+      SQL_MAX_ROWS: ${SQL_MAX_ROWS:-200}
+      SQL_LLM_ROWS: ${SQL_LLM_ROWS:-50}
+      SQL_MAX_RETRIES: ${SQL_MAX_RETRIES:-2}
+    ports:
+      - "${AI_PORT:-3040}:3000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ai-local-uploads:/data/uploads
+    depends_on:
+      ai-postgres:
+        condition: service_healthy
+    networks:
+      - ssp2-local-net
+
+  ai-postgres:
+    image: pgvector/pgvector:pg18
+    container_name: ssp2_dev_ai_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${AI_PG_PASSWORD:-postgres}
+      POSTGRES_DB: postgres
+      AI_RO_PASSWORD: ${AI_RO_PASSWORD:-ai_ro}
+    ports:
+      - "${AI_PG_HOST_PORT:-3150}:5432"
+    volumes:
+      - ai-local-pg-data:/var/lib/postgresql
+      - ./ai-postgres-init:/docker-entrypoint-initdb.d:ro
+      - ../tests/fixtures:/fixtures:ro
+      - ../scripts:/scripts:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks:
+      - ssp2-local-net
+
+volumes:
+  ai-local-pg-data:
+  ai-local-uploads:
+
+networks:
+  ssp2-local-net:
+    driver: bridge

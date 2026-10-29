@@ -1,0 +1,54 @@
+# =============================================================
+# Potongan konfigurasi nginx untuk ai-service — tempel ke turborepo/docker/nginx/default.conf
+# (dan default.dev.conf) mengikuti pola `/notification/`. Prefix /ai/ DIHAPUS saat diteruskan.
+# =============================================================
+
+# --- blok http {} : upstream replica ai-service -------------------------------
+# Satu host: alias network docker. Host terpisah (seperti notification di VM lain):
+#   server 10.x.x.x:3006 max_fails=3 fail_timeout=10s; server 10.x.x.x:3007 ...;
+upstream ssp2_ai {
+    server ssp2_prod_ai:3000 max_fails=3 fail_timeout=10s;   # dev: ssp2_dev_ai:3000
+    keepalive 16;
+}
+
+# --- blok server {} publik (443/80) --------------------------------------------
+# SSE chat: tanpa buffering, timeout panjang (mengikuti blok inbox/stream notification).
+location = /ai/api/v1/chat/stream {
+    proxy_pass http://ssp2_ai/api/v1/chat/stream;
+    proxy_http_version 1.1;
+    proxy_set_header Connection "";
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_buffering off;
+    proxy_cache off;
+    proxy_connect_timeout 3s;
+    proxy_read_timeout 15m;
+    proxy_send_timeout 15m;
+}
+
+# Endpoint internal (konektor WA/TG) dan admin TIDAK boleh dari internet:
+# konektor memakai listener internal :8080; admin lewat SSH tunnel ke port host.
+location ^~ /ai/api/v1/internal { return 403; }
+location ^~ /ai/api/v1/admin    { return 403; }
+
+location /ai/ {
+    proxy_pass http://ssp2_ai/;
+    proxy_http_version 1.1;
+    proxy_set_header Connection "";
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_connect_timeout 3s;
+    proxy_read_timeout 120s;
+    client_max_body_size 25m;
+}
+location = /ai { return 308 /ai/; }
+
+# --- blok server { listen 8080; } internal (dipakai BE/notification/konektor) -----
+# Tambahkan di dalam server internal yang sudah ada:
+#   location /ai/ { proxy_pass http://ssp2_ai/; proxy_http_version 1.1; proxy_set_header Connection "";
+#                   proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for; proxy_read_timeout 120s; }
+# Konektor memanggil: http://ssp2_prod_nginx:8080/ai/api/v1/internal/chat (header X-API-Key).

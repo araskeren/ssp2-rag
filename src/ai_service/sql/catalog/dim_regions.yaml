@@ -1,0 +1,51 @@
+# Virtual view 'dim_regions' — katalog semantik Text-to-SQL ai-service.
+# DIHASILKAN scripts/gen_catalog.py — jangan edit manual; ubah generator lalu jalankan ulang.
+# Placeholder {scope_filter} diisi sistem (filter wilayah pengguna, parameter terikat).
+name: dim_regions
+modul: Master wilayah
+deskripsi: Referensi wilayah administratif (provinsi, kabupaten/kota, kecamatan, desa/kelurahan) dengan kode dan nama. Tidak dibatasi wilayah pengguna.
+grain: satu baris per wilayah
+unscoped: true
+columns:
+- name: region_id
+  type: id
+  deskripsi: ID wilayah
+- name: code
+  type: text
+  deskripsi: Kode wilayah (mis. 33 = provinsi, 33.28 = kabupaten/kota)
+- name: name
+  type: text
+  deskripsi: Nama wilayah
+- name: level
+  type: text
+  deskripsi: Tingkat wilayah
+  nilai:
+  - PROVINCE
+  - CITY
+  - DISTRICT
+  - VILLAGE
+- name: parent_id
+  type: id
+  deskripsi: ID wilayah induk
+- name: is_active
+  type: bool
+  deskripsi: Wilayah aktif
+scope:
+  postgres: {}
+  clickhouse: {}
+contoh:
+- pertanyaan: Apa saja kabupaten/kota di provinsi dengan kode 33?
+  sql: SELECT code, name FROM dim_regions WHERE level = 'CITY' AND code LIKE '33.%' ORDER BY name
+sql:
+  postgres: |
+    SELECT
+      r.id AS region_id,
+      r.code AS code,
+      r.name AS name,
+      r.level AS level,
+      r."parentId" AS parent_id,
+      r."isActive" AS is_active
+    FROM master.regions r
+    WHERE {scope_filter}
+  clickhouse: |
+    SELECT id AS region_id, code, name, level, parentId AS parent_id, isActive AS is_active FROM master.regions_final WHERE {scope_filter}

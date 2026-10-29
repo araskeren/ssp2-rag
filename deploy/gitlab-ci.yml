@@ -1,0 +1,138 @@
+# =============================================================
+# GitLab CI ai-service — arahkan "CI/CD configuration file" proyek ke deploy/gitlab-ci.yml.
+# Stage: lint → test → build → security → deploy (pola notification-service/deploy/gitlab-ci.yml).
+# Variabel CI/CD yang wajib ada (Settings → CI/CD → Variables):
+#   SSH_PRIVATE_KEY, SSH_USER, SERVER_IP, DEPLOY_DIR (scoped per environment dev/production)
+# Deploy memakai IMAGE_TAG=v<pipeline IID> dan compose yang sudah ada di server (DEPLOY_DIR/.env).
+# =============================================================
+include:
+  - template: Security/Container-Scanning.gitlab-ci.yml
+
+stages:
+  - lint
+  - test
+  - build
+  - security
+  - deploy
+
+variables:
+  DOCKER_IMAGE_AI: $CI_REGISTRY_IMAGE/ai-service
+  IMAGE_TAG: v$CI_PIPELINE_IID
+  BRANCH_TAG: $CI_COMMIT_REF_SLUG
+  PY_IMAGE: ghcr.io/astral-sh/uv:python3.12-bookworm-slim
+  UV_LINK_MODE: copy
+  UV_CACHE_DIR: $CI_PROJECT_DIR/.uv-cache
+
+.python:
+  image: $PY_IMAGE
+  cache:
+    key: uv-$CI_COMMIT_REF_SLUG
+    paths:
+      - .uv-cache
+  before_script:
+    - uv sync --frozen --no-install-project --group dev
+
+lint_ai:
+  extends: .python
+  stage: lint
+  script:
+    - uv sync --frozen --group dev
+    - uv run ruff check .
+    - uv run ruff format --check .
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  allow_failure: true
+
+unit_test_ai:
+  extends: .python
+  stage: test
+  services:
+    - name: pgvector/pgvector:pg18
+      alias: postgres
+  variables:
+    POSTGRES_USER: postgres
+    POSTGRES_PASSWORD: postgres
+    POSTGRES_DB: ai_service_test
+    AI_TEST_DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/ai_service_test
+    AI_TEST_ANALYTICS_ADMIN_DSN: postgresql://postgres:postgres@postgres:5432/sdp_fixture
+    AI_TEST_ANALYTICS_DSN: postgresql://ai_ro:ai_ro@postgres:5432/sdp_fixture
+  script:
+    - uv sync --frozen --group dev
+    - apt-get update -qq && apt-get install -y -qq postgresql-client >/dev/null
+    - PGPASSWORD=postgres psql -h postgres -U postgres -d postgres -c "CREATE DATABASE sdp_fixture;"
+    - PGPASSWORD=postgres psql -h postgres -U postgres -d ai_service_test -c "CREATE EXTENSION IF NOT EXISTS vector;"
+    - uv run pytest -q -m "not llm" --junitxml=report.xml
+  artifacts:
+    when: always
+    reports:
+      junit: report.xml
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "dev" || $CI_COMMIT_BRANCH == "main"
+
+build_ai:
+  stage: build
+  image: docker:27
+  services:
+    - docker:27-dind
+  variables:
+    DOCKER_TLS_CERTDIR: "/certs"
+  before_script:
+    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
+  script:
+    - docker build -t "$DOCKER_IMAGE_AI:$IMAGE_TAG" -t "$DOCKER_IMAGE_AI:$BRANCH_TAG" .
+    - docker push -a "$DOCKER_IMAGE_AI"
+  rules:
+    - if: $CI_COMMIT_BRANCH == "dev" || $CI_COMMIT_BRANCH == "main"
+      when: manual
+
+container_scanning_ai:
+  extends: container_scanning
+  stage: security
+  variables:
+    CS_IMAGE: $DOCKER_IMAGE_AI:$BRANCH_TAG
+  needs: [build_ai]
+  rules:
+    - if: $CI_COMMIT_BRANCH == "dev" || $CI_COMMIT_BRANCH == "main"
+
+.deploy:
+  stage: deploy
+  image: alpine:3.20
+  before_script:
+    - apk add --no-cache openssh-client
+    - mkdir -p ~/.ssh && chmod 700 ~/.ssh
+    - echo "$SSH_PRIVATE_KEY" | tr -d '\r' > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+    - ssh-keyscan -H "$SERVER_IP" >> ~/.ssh/known_hosts 2>/dev/null
+  script:
+    - >
+      ssh -i ~/.ssh/id_ed25519 "$SSH_USER@$SERVER_IP"
+      "cd $DEPLOY_DIR && export IMAGE_TAG=$IMAGE_TAG &&
+      docker compose --env-file .env -f $COMPOSE_FILE_AI pull &&
+      docker compose --env-file .env -f $COMPOSE_FILE_AI up -d &&
+      sleep 5 && curl -fsS http://localhost:${AI_HEALTH_PORT}/readyz"
+
+deploy_dev_ai:
+  extends: .deploy
+  variables:
+    COMPOSE_FILE_AI: docker/docker-compose.dev.ai-service.yaml
+    AI_HEALTH_PORT: "3040"
+  environment:
+    name: dev
+    url: https://api-nar-dev.kemkes.go.id/ai/healthz
+  needs: [build_ai]
+  rules:
+    - if: $CI_COMMIT_BRANCH == "dev"
+      when: manual
+
+deploy_prod_ai:
+  extends: .deploy
+  variables:
+    COMPOSE_FILE_AI: docker/docker-compose.prod.ai-service.yaml
+    AI_HEALTH_PORT: "3006"
+  environment:
+    name: production
+    url: https://data-nar.kemkes.go.id/ai/healthz
+  needs: [build_ai]
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+      when: manual
