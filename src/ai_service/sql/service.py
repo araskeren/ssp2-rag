@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import re
 import uuid
+from collections.abc import Awaitable, Callable
 from string import Template
 from typing import Any
 
@@ -16,6 +17,7 @@ from ai_service.agent.context import ChatContext, SqlOutcome
 from ai_service.agent.prompting import load_prompt
 from ai_service.config import Settings
 from ai_service.db.repositories import AuditRepo
+from ai_service.llm.registry import LlmRegistry
 from ai_service.logging import get_logger
 from ai_service.sql.backends.base import SqlBackend, SqlExecutionError, SqlTimeoutError
 from ai_service.sql.catalog import Catalog, CatalogError, load_catalog
@@ -23,6 +25,7 @@ from ai_service.sql.guard import GuardError, validate_sql
 
 log = get_logger(__name__)
 
+LlmSource = Callable[[], Awaitable[BaseChatModel]]
 DIALECT_NAMES = {"postgres": "PostgreSQL 18", "clickhouse": "ClickHouse"}
 
 
@@ -60,8 +63,9 @@ class SqlService:
         catalog: Catalog,
         backend: SqlBackend,
         audit: AuditRepo,
-        llm: BaseChatModel,
+        llm: BaseChatModel | LlmSource,
     ) -> None:
+        """`llm` = model tetap, atau callable async yang me-resolve model SQL tiap panggilan (registry)."""
         self._settings = settings
         self._catalog = catalog
         self._backend = backend
@@ -219,7 +223,8 @@ class SqlService:
             feedback_block=feedback_block,
             question=question.strip(),
         )
-        response = await self._llm.ainvoke([HumanMessage(content=prompt)])
+        llm = self._llm if isinstance(self._llm, BaseChatModel) else await self._llm()
+        response = await llm.ainvoke([HumanMessage(content=prompt)])
         text = (
             response.text
             if isinstance(getattr(response, "text", None), str)
@@ -274,7 +279,10 @@ def _markdown_table(columns: list[str], rows: list[list[Any]]) -> str:
 
 
 async def build_sql_service(
-    settings: Settings, audit: AuditRepo, llm: BaseChatModel | None = None
+    settings: Settings,
+    audit: AuditRepo,
+    llm: BaseChatModel | None = None,
+    registry: LlmRegistry | None = None,
 ) -> tuple[SqlService, SqlBackend]:
     catalog = load_catalog()
     issues = catalog.validate(settings.sql_backend)
@@ -300,5 +308,14 @@ async def build_sql_service(
             settings.sql_statement_timeout_ms,
         )
     await backend.connect()
-    sql_llm = llm or build_llm(settings, settings.effective_llm_sql_model, temperature=0)
+    sql_llm: BaseChatModel | LlmSource
+    if llm is not None:
+        sql_llm = llm
+    elif registry is not None:
+
+        async def sql_llm() -> BaseChatModel:
+            return (await registry.resolve("sql")).llm
+
+    else:
+        sql_llm = build_llm(settings, settings.effective_llm_sql_model, temperature=0)
     return SqlService(settings, catalog, backend, audit, sql_llm), backend

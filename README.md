@@ -88,6 +88,13 @@ Wajib di prod: `JWT_SECRET` (= BE), `API_KEYS`, `ADMIN_API_KEYS`, `LLM_BASE_URL`
 Mengganti model/dimensi embedding setelah ada data mewajibkan `ai-service reindex --confirm`
 (service menolak start bila konfigurasi tidak cocok dengan data tersimpan).
 
+**Multi-provider LLM.** Selain `LLM_*` (fallback), admin dapat mendaftarkan banyak provider
+`openai_compatible` / `anthropic_compatible` — masing-masing dengan `base_url` + API key sendiri
+(terenkripsi dengan `AI_SECRETS_KEY`) — lalu menentukan model per keperluan (chat, SQL, judge, embedding),
+per role (`public`/`analyst`), atau per kanal/user lewat `/api/v1/admin/llm/*`
+(lihat [docs/api.md](docs/api.md#admin--registry-llm-x-api-key-admin)). `ai-service llm import-env`
+menyalin konfigurasi env saat ini ke registry.
+
 ## API singkat
 
 | Endpoint | Auth | Fungsi |
@@ -97,7 +104,8 @@ Mengganti model/dimensi embedding setelah ada data mewajibkan `ai-service reinde
 | `GET/DELETE /api/v1/chat/sessions…` | Bearer JWT | daftar/riwayat/hapus sesi milik sendiri |
 | `POST /api/v1/internal/chat` | `X-API-Key` | chat untuk konektor WA/TG (`platform`, `channel_id`) + `text_plain` |
 | `POST /api/v1/admin/ingest` · `/admin/documents…` · `/admin/search` | `X-API-Key` admin | ingest & kelola dokumen, debug retrieval |
-| `GET/POST/PATCH/DELETE /api/v1/admin/channels` | `X-API-Key` admin | kelola `allowed_channels` |
+| `GET/POST/PATCH/DELETE /api/v1/admin/channels` | `X-API-Key` admin | kelola `allowed_channels` (+ override model per kanal) |
+| `/api/v1/admin/llm/providers…` · `/models…` · `/assignments` · `/resolve` | `X-API-Key` admin | registry provider LLM (OpenAI-/Anthropic-compatible) & penugasan model |
 | `GET /api/v1/admin/sql-audit` | `X-API-Key` admin | audit setiap percobaan SQL (termasuk `access_denied`) |
 | `GET /api/v1/admin/catalog` | `X-API-Key` admin | katalog virtual view Text-to-SQL (+ `?prompt=true`) |
 | `GET /healthz` · `GET /readyz` | — | probe |
@@ -114,6 +122,7 @@ uv run ai-service reindex --confirm            # potong+embed ulang (ganti model
 uv run ai-service channel add wa 628123456789 --role analyst --scope PROVINCE --provinsi-kode 33
 uv run ai-service catalog check|show|drift     # validasi katalog, lihat prompt skema, cek drift skema BE
 uv run ai-service eval rag|sql|access|judge    # evaluasi (laporan di eval/reports/)
+uv run ai-service llm gen-key|list|import-env  # kunci AI_SECRETS_KEY, lihat registry LLM, salin LLM_* ke registry
 ```
 
 ## Test & lint
@@ -149,7 +158,7 @@ kuat sebelum membaca angka kualitasnya sebagai tolok ukur.
 - **Throttler BE per IP**: ai-service meneruskan IP pengguna (`X-Forwarded-For`), namun
   `GET /auth/profile` sebaiknya diberi `@SkipThrottle()`/limit lebih longgar di BE.
 - **Rate limit & job ingest per replica** (in-process, tanpa Redis); volume unggahan dibagi antar replica di satu host.
-- **Privasi LLM cloud**: potongan dokumen dan hasil agregat dikirim ke `LLM_BASE_URL`; produksi wajib on-prem.
+- **Privasi LLM cloud**: potongan dokumen dan hasil agregat dikirim ke `LLM_BASE_URL` / provider registry yang ditugaskan; produksi wajib on-prem.
 - **Katalog = porting manual** skema BE; jalankan `catalog drift` setelah migrasi BE.
 - **ClickHouse** (`SQL_BACKEND=clickhouse`) menunggu regenerasi pipeline ke skema dev dan user `app_ro` yang dipersempit.
 

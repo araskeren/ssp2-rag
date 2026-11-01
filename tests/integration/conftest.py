@@ -46,11 +46,14 @@ async def pg_db(pg_settings: Settings):
     db = Database(pg_settings.ai_database_url, 2)
     async with db.engine.begin() as conn:
         for table in (
+            "llm_assignments",
             "ingest_jobs",
             "sql_audit_log",
             "chat_messages",
             "chat_sessions",
             "allowed_channels",
+            "llm_models",
+            "llm_providers",
             "document_chunks",
             "documents",
         ):

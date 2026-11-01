@@ -1,4 +1,4 @@
-"""Perintah CLI fitur: ingest, reindex, channel (catalog & eval menyusul)."""
+"""Perintah CLI fitur: ingest, reindex, catalog, eval, channel, llm (registry provider)."""
 
 from __future__ import annotations
 
@@ -196,6 +196,134 @@ def register(app: typer.Typer) -> None:
 
         _run_eval(lambda s: run_access_eval(s, path))
 
+    llm_app = typer.Typer(
+        help="Registry provider LLM (OpenAI-/Anthropic-compatible).", no_args_is_help=True
+    )
+    app.add_typer(llm_app, name="llm")
+
+    @llm_app.command("gen-key")
+    def llm_gen_key() -> None:
+        """Cetak Fernet key baru untuk AI_SECRETS_KEY (enkripsi API key provider di DB)."""
+        from ai_service.llm.crypto import generate_key
+
+        typer.echo(generate_key())
+
+    @llm_app.command("list")
+    def llm_list() -> None:
+        """Tampilkan provider, model, penugasan, dan model efektif per role."""
+
+        async def run(services):  # noqa: ANN001
+            repo, registry = services.llm_repo, services.llm_registry
+            providers = await repo.list_providers()
+            models = await repo.list_models()
+            assignments = await repo.list_assignments()
+            resolved = {
+                role: (await registry.resolve("chat", role)).to_dict()
+                for role in ("public", "analyst")
+            }
+            resolved["sql"] = (await registry.resolve("sql")).to_dict()
+            resolved["judge"] = (await registry.resolve("judge")).to_dict()
+            return providers, models, assignments, resolved
+
+        providers, models, assignments, resolved = asyncio.run(
+            _with_services(run, check_embedding=False)
+        )
+        names = {p.id: p.name for p in providers}
+        typer.echo("PROVIDER")
+        for p in providers:
+            key = f"key {p.api_key_hint}" if p.api_key_enc else "tanpa key"
+            typer.echo(
+                f"  [{p.id}] {p.name:16} {p.kind:22} {p.base_url or '(resmi)'} {key}"
+                f"{'' if p.is_active else ' NONAKTIF'}"
+            )
+        typer.echo("MODEL")
+        for m in models:
+            typer.echo(
+                f"  [{m.id}] {m.name:16} {m.kind:9} {names.get(m.provider_id, '?')}/{m.model}"
+                f"{'' if m.is_active else ' NONAKTIF'}"
+            )
+        typer.echo("PENUGASAN")
+        for a in assignments:
+            typer.echo(f"  {a.purpose:9} {a.ai_role or '(default)':10} → model [{a.model_id}]")
+        typer.echo("EFEKTIF")
+        for target, info in resolved.items():
+            typer.echo(f"  {target:9} {info['label']} (via {info['via']})")
+
+    @llm_app.command("import-env")
+    def llm_import_env(
+        provider_name: str = typer.Option("env", help="Nama provider yang dibuat."),
+        assign: bool = typer.Option(True, help="Tugaskan sebagai default chat/sql/embedding."),
+    ) -> None:
+        """Salin konfigurasi LLM_* / EMBEDDING_* saat ini ke registry DB (migrasi dari env)."""
+        from ai_service.llm.crypto import api_key_hint
+
+        async def run(services):  # noqa: ANN001
+            s, repo, box = services.settings, services.llm_repo, services.secret_box
+            if await repo.get_provider_by_name(provider_name) is not None:
+                raise typer.BadParameter(f"provider '{provider_name}' sudah ada")
+
+            async def provider(name, base_url, api_key):  # noqa: ANN001
+                existing = await repo.get_provider_by_name(name)
+                if existing is not None:
+                    return existing
+                return await repo.create_provider(
+                    {
+                        "name": name,
+                        "kind": "openai_compatible",
+                        "base_url": base_url,
+                        "api_key_enc": box.encrypt(api_key) if api_key else None,
+                        "api_key_hint": api_key_hint(api_key) or None,
+                    }
+                )
+
+            async def model(prov, name, upstream, **extra):  # noqa: ANN001
+                existing = await repo.get_model_by_name(name)
+                if existing is not None:
+                    return existing
+                return await repo.create_model(
+                    {"provider_id": prov.id, "name": name, "model": upstream, **extra}
+                )
+
+            chat_p = await provider(provider_name, s.llm_base_url, s.llm_api_key)
+            chat_m = await model(chat_p, f"{provider_name}-chat", s.llm_model)
+            created = [f"provider {chat_p.name}", f"model {chat_m.name}"]
+            sql_m = chat_m
+            if s.llm_sql_model:
+                sql_m = await model(chat_p, f"{provider_name}-sql", s.llm_sql_model, temperature=0)
+                created.append(f"model {sql_m.name}")
+            same_embedding_endpoint = (
+                s.effective_embedding_base_url == s.llm_base_url
+                and s.effective_embedding_api_key == s.llm_api_key
+            )
+            emb_p = (
+                chat_p
+                if same_embedding_endpoint
+                else await provider(
+                    f"{provider_name}-embedding",
+                    s.effective_embedding_base_url,
+                    s.effective_embedding_api_key,
+                )
+            )
+            emb_m = await model(
+                emb_p,
+                f"{provider_name}-embedding",
+                s.embedding_model,
+                kind="embedding",
+                embedding_dim=s.embedding_dim,
+                params={"send_dimensions": s.embedding_send_dimensions},
+            )
+            created.append(f"model {emb_m.name}")
+            if assign:
+                await repo.upsert_assignment("chat", None, chat_m.id)
+                await repo.upsert_assignment("embedding", None, emb_m.id)
+                if s.llm_sql_model:
+                    await repo.upsert_assignment("sql", None, sql_m.id)
+                created.append("penugasan default")
+            return created
+
+        for line in asyncio.run(_with_services(run, check_embedding=False)):
+            typer.echo(f"dibuat: {line}")
+
     channel_app = typer.Typer(help="Kelola allowed_channels (wa/tg/web).", no_args_is_help=True)
     app.add_typer(channel_app, name="channel")
 
@@ -229,7 +357,9 @@ def register(app: typer.Typer) -> None:
             raise typer.BadParameter("; ".join(masalah))
 
         async def run(services):  # noqa: ANN001
-            data = body.model_dump()
+            data = body.model_dump(
+                exclude={"llm_model_id"}
+            )  # override model dikelola via admin API
             data["channel_id"] = normalize_channel_id(platform, channel_id)
             existing = await services.channels.get(platform, data["channel_id"])
             if existing is not None:

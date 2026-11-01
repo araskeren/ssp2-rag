@@ -36,6 +36,7 @@ Salin `.env.example`, lalu isi minimal:
 | `AI_RO_PASSWORD` atau `ANALYTICS_PG_DSN` penuh | wajib bila SQL tool dipakai | wajib |
 | `LLM_BASE_URL`, `LLM_MODEL`, `LLM_API_KEY` | bebas | wajib (on-prem) |
 | `EMBEDDING_MODEL`, `EMBEDDING_DIM`, `EMBEDDING_SEND_DIMENSIONS` | bebas | wajib |
+| `AI_SECRETS_KEY` (`ai-service llm gen-key`) | wajib bila provider registry ber-API key | wajib bila provider registry ber-API key; simpan permanen |
 | `BE_BASE_URL_DOCKER` (dev) / `BE_BASE_URL` (prod) | default container BE | default nginx internal |
 | `AI_PORT` / `AI_PORT_RANGE`, `AI_REPLICAS`, `AI_MEM_LIMIT` | opsional | opsional |
 
@@ -80,8 +81,13 @@ dan `/ai/api/v1/admin`, `location /ai/` (prefix dihapus), dan `location /ai/` di
 - **Rotasi key**: `API_KEYS`/`ADMIN_API_KEYS` menerima daftar koma — tambah key baru, deploy, ganti di klien, hapus key lama.
 - **Backup**: `docker exec ssp2_prod_ai_postgres pg_dump -U postgres ai_service > ai_service-$(date +%F).sql`
   (berkas asli unggahan ada di volume `ai-prod-uploads`).
-- **Ganti model embedding**: ubah `EMBEDDING_MODEL`/`EMBEDDING_DIM` → service menolak boot →
-  `docker compose run --rm ai ai-service reindex --confirm` → `up -d`.
+- **Ganti model embedding**: ubah `EMBEDDING_MODEL`/`EMBEDDING_DIM` (atau penugasan registry
+  `purpose=embedding`) → service menolak boot → `docker compose run --rm ai ai-service reindex --confirm` → `up -d`.
+- **Ganti/tambah provider LLM** (tanpa restart): `POST /api/v1/admin/llm/providers` + `/models`, uji dengan
+  `POST /models/{id}/test`, lalu `PUT /assignments` (chat per role, sql, judge) atau `llm_model_id` di kanal;
+  cek `GET /api/v1/admin/llm/resolve`. Replica lain mengikuti ≤ `LLM_REGISTRY_TTL_S`.
+- **Rotasi API key provider**: `PATCH /api/v1/admin/llm/providers/{id}` `{"api_key": "<baru>"}`.
+  `AI_SECRETS_KEY` sendiri tidak boleh diganti tanpa mengisi ulang semua API key provider.
 - **Dokumen baru/berubah**: unggah ulang dengan `replace=true` (sha256 berbeda otomatis dianggap dokumen baru).
 - **Skema BE berubah**: `ai-service catalog drift`; perbarui `scripts/gen_catalog.py`, jalankan
   `uv run python scripts/gen_catalog.py`, rilis.
