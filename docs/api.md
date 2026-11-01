@@ -97,9 +97,39 @@ Response = `ChatResponse` + `text_plain` (markdown → teks WA/TG + daftar sumbe
 | `GET /api/v1/admin/ingest/{job_id}` | status job |
 | `GET /api/v1/admin/documents?status=&q=&page=&limit=` · `GET /documents/{id}` · `DELETE /documents/{id}` · `POST /documents/{id}/reindex` | kelola dokumen |
 | `POST /api/v1/admin/search` `{query, top_k}` | debug retrieval (hit + dense/sparse rank) |
-| `GET/POST /api/v1/admin/channels` · `PATCH/DELETE /channels/{id}` | `allowed_channels` (`platform`, `channel_id`, `role`, `scope_level`, `provinsi_kode`, `kabupaten_kota_kode`, `facility_id`, `is_active`) |
+| `GET/POST /api/v1/admin/channels` · `PATCH/DELETE /channels/{id}` | `allowed_channels` (`platform`, `channel_id`, `role`, `scope_level`, `provinsi_kode`, `kabupaten_kota_kode`, `facility_id`, `is_active`, `llm_model_id` = override model chat kanal/user ini) |
 | `GET /api/v1/admin/sql-audit?status=&principal_id=&from=&to=&page=&limit=` | audit SQL: `ok\|rejected\|error\|timeout\|access_denied`, SQL yang dibuat & dieksekusi, view, percobaan, durasi |
 | `GET /api/v1/admin/catalog?prompt=` | katalog virtual view (kolom, scope, contoh) + hasil validasi; `prompt=true` menyertakan rendering untuk LLM |
+
+## Admin — registry LLM (`X-API-Key` admin)
+
+Provider LLM disimpan di DB, masing-masing dengan credentials sendiri; admin menentukan model yang dipakai.
+
+| Endpoint | Fungsi |
+|---|---|
+| `GET/POST /api/v1/admin/llm/providers` · `GET/PATCH/DELETE /providers/{id}` | provider: `name` (slug), `kind` = `openai_compatible` \| `anthropic_compatible`, `base_url` (kosong = endpoint resmi; OpenAI-compatible harus memuat `/v1`), `api_key` (write-only, dienkripsi Fernet `AI_SECRETS_KEY`; respons hanya `api_key_set` + `api_key_hint`; PATCH `api_key: ""` = hapus), `headers` (header ekstra; nilai sensitif ditampilkan `***`, kirim balik `***` = pertahankan), `timeout_s`, `is_active`. DELETE 409 bila masih punya model |
+| `GET/POST /api/v1/admin/llm/models?provider_id=&kind=` · `GET/PATCH/DELETE /models/{id}` | model: `provider_id`, `name` (alias, slug unik), `model` (id upstream, mis. `claude-sonnet-4-5`, `gpt-4o-mini`, `qwen2.5:14b`), `kind` = `chat` \| `embedding` (embedding hanya provider openai_compatible, wajib `embedding_dim`), `temperature?`, `max_tokens?` (Anthropic default `ANTHROPIC_DEFAULT_MAX_TOKENS`), `params` (kwargs ekstra LangChain, mis. `{"top_p":0.9}`; embedding: `{"send_dimensions": false}`), `is_active`. DELETE 409 bila masih ditugaskan |
+| `POST /api/v1/admin/llm/models/{id}/test` | panggilan nyata ke provider → `{ok, latency_ms, output}` (chat) / `{ok, dim, dim_ok}` (embedding) / `{ok:false, error}` |
+| `GET /api/v1/admin/llm/assignments` · `PUT /assignments` `{purpose, ai_role?, model_id}` · `DELETE /assignments?purpose=&ai_role=` | penugasan model: `purpose` = `chat` \| `sql` \| `judge` \| `embedding`; `ai_role` (`public`\|`analyst`) hanya untuk `chat`, null = default. Embedding: respons `restart_required`/`reindex_required` (berlaku saat boot berikutnya; model/dimensi berbeda → `ai-service reindex --confirm`) |
+| `GET /api/v1/admin/llm/resolve?ai_role=&platform=&channel_id=` | debug: model efektif per keperluan untuk role/kanal |
+
+Urutan resolusi model chat: `allowed_channels.llm_model_id` → penugasan `(chat, ai_role)` → `(chat, default)` →
+env `LLM_*`. SQL: `(sql)` → env `LLM_SQL_MODEL` → `(chat, default)` → env `LLM_MODEL`. Judge eval: `(judge)` →
+`(chat, default)` → env. Embedding: `(embedding)` → env `EMBEDDING_*`. Perubahan berlaku langsung di replica
+yang menerima request admin dan ≤ `LLM_REGISTRY_TTL_S` di replica lain. `chat_messages.model` mencatat
+`<provider>/<model>` yang benar-benar menjawab.
+
+Contoh:
+
+```bash
+H='X-API-Key: <admin-key>'
+curl -sX POST $AI/api/v1/admin/llm/providers -H "$H" -H 'content-type: application/json' \
+  -d '{"name":"anthropic","kind":"anthropic_compatible","api_key":"sk-ant-..."}'
+curl -sX POST $AI/api/v1/admin/llm/models -H "$H" -H 'content-type: application/json' \
+  -d '{"provider_id":1,"name":"claude-sonnet","model":"claude-sonnet-4-5","max_tokens":4096}'
+curl -sX PUT $AI/api/v1/admin/llm/assignments -H "$H" -H 'content-type: application/json' \
+  -d '{"purpose":"chat","ai_role":"analyst","model_id":1}'
+```
 
 ## Probe
 `GET /healthz` → `ok`. `GET /readyz` → `{"db": "ok|down", "analytics_db": "ok|down|skipped", "llm": "configured|missing"}` (503 hanya bila DB sendiri down).

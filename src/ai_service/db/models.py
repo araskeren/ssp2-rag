@@ -7,7 +7,17 @@ from datetime import datetime
 from typing import Any
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, SmallInteger, Text, text
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    SmallInteger,
+    Text,
+    text,
+)
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -97,6 +107,9 @@ class AllowedChannel(Base):
     display_name: Mapped[str | None] = mapped_column(Text)
     notes: Mapped[str | None] = mapped_column(Text)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+    llm_model_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("llm_models.id", ondelete="SET NULL")
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()")
     )
@@ -196,3 +209,66 @@ class IngestJob(Base):
     )
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class LlmProvider(Base):
+    __tablename__ = "llm_providers"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    name: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    kind: Mapped[str] = mapped_column(Text, nullable=False)
+    base_url: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("''"))
+    api_key_enc: Mapped[str | None] = mapped_column(Text)
+    api_key_hint: Mapped[str | None] = mapped_column(Text)
+    headers: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'")
+    )
+    timeout_s: Mapped[float | None] = mapped_column(Float)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()")
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()")
+    )
+
+
+class LlmModel(Base):
+    __tablename__ = "llm_models"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    provider_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("llm_providers.id", ondelete="RESTRICT"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    model: Mapped[str] = mapped_column(Text, nullable=False)
+    kind: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'chat'"))
+    temperature: Mapped[float | None] = mapped_column(Float)
+    max_tokens: Mapped[int | None] = mapped_column(Integer)
+    embedding_dim: Mapped[int | None] = mapped_column(Integer)
+    params: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'")
+    )
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()")
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()")
+    )
+
+
+class LlmAssignment(Base):
+    __tablename__ = "llm_assignments"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    purpose: Mapped[str] = mapped_column(Text, nullable=False)
+    ai_role: Mapped[str | None] = mapped_column(Text)
+    model_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("llm_models.id", ondelete="RESTRICT"), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()")
+    )

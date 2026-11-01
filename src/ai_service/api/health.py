@@ -22,9 +22,14 @@ async def readyz(request: Request) -> JSONResponse:
     analytics = "skipped"
     if services is not None and getattr(services, "sql_backend", None) is not None:
         analytics = "ok" if await services.sql_backend.ping() else "down"
+    registry = getattr(services, "llm_registry", None) if services is not None else None
+    if registry is not None:
+        llm_ok = await registry.configured()
+    else:
+        llm_ok = bool(settings.llm_base_url and settings.llm_model)
     body = {
         "db": "ok" if db_ok else "down",
         "analytics_db": analytics,
-        "llm": "configured" if settings.llm_base_url and settings.llm_model else "missing",
+        "llm": "configured" if llm_ok else "missing",
     }
     return JSONResponse(status_code=200 if db_ok else 503, content=body)

@@ -23,6 +23,7 @@ SECRET_FIELDS: frozenset[str] = frozenset(
         "ai_database_url",
         "analytics_pg_dsn",
         "analytics_ch_password",
+        "ai_secrets_key",
     }
 )
 
@@ -67,6 +68,12 @@ class Settings(BaseSettings):
     llm_temperature: float = 0.0
     llm_timeout_s: float = 60.0
     llm_max_concurrency: int = 8
+
+    # --- registry provider LLM (DB, dikelola via /api/v1/admin/llm) ---
+    # Fernet key untuk mengenkripsi API key provider di DB (`ai-service llm gen-key`).
+    ai_secrets_key: str = ""
+    llm_registry_ttl_s: float = 30.0
+    anthropic_default_max_tokens: int = 4096
 
     # --- embedding ---
     embedding_base_url: str = ""
@@ -129,6 +136,8 @@ class Settings(BaseSettings):
             raise ValueError("EMBEDDING_DIM harus > 0")
         if self.rag_chunk_overlap >= self.rag_chunk_size:
             raise ValueError("RAG_CHUNK_OVERLAP harus lebih kecil dari RAG_CHUNK_SIZE")
+        if self.anthropic_default_max_tokens <= 0:
+            raise ValueError("ANTHROPIC_DEFAULT_MAX_TOKENS harus > 0")
         if self.sql_llm_rows > self.sql_max_rows:
             raise ValueError("SQL_LLM_ROWS tidak boleh melebihi SQL_MAX_ROWS")
         if self.app_env == "prod":

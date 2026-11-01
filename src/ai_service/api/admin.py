@@ -32,6 +32,14 @@ def _channels(services: Services):
     return services.channels
 
 
+async def _check_channel_model(services: Services, model_id: int | None) -> None:
+    if model_id is None:
+        return
+    model = await services.llm_repo.get_model(model_id) if services.llm_repo else None
+    if model is None or model.kind != "chat":
+        raise ApiError(400, "validasi request gagal", ["llm_model_id: model chat tidak ditemukan"])
+
+
 @router.get("/channels", response_model=PageOut)
 async def list_channels(
     platform: str | None = Query(default=None, pattern="^(wa|tg|web)$"),
@@ -50,6 +58,7 @@ async def create_channel(body: ChannelIn, services: Services = Depends(get_servi
     masalah = body.validate_scope()
     if masalah:
         raise ApiError(400, "validasi request gagal", masalah)
+    await _check_channel_model(services, body.llm_model_id)
     data = body.model_dump()
     data["channel_id"] = normalize_channel_id(body.platform, body.channel_id)
     repo = _channels(services)
@@ -82,6 +91,8 @@ async def patch_channel(
     masalah = merged.validate_scope()
     if masalah:
         raise ApiError(400, "validasi request gagal", masalah)
+    if "llm_model_id" in data:
+        await _check_channel_model(services, data["llm_model_id"])
     updated = await repo.update(channel_pk, data)
     return ChannelOut.model_validate(updated)
 

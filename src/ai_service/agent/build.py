@@ -1,4 +1,8 @@
-"""Konstruksi LLM (OpenAI-compatible) dan agent LangChain v1."""
+"""Konstruksi LLM dan agent LangChain v1.
+
+`build_llm` = jalur env lama (OpenAI-compatible, LLM_*); model dari registry DB dibangun oleh
+`ai_service.llm.factory.build_chat_model` (OpenAI-compatible / Anthropic-compatible).
+"""
 
 from __future__ import annotations
 

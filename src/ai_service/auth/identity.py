@@ -41,6 +41,8 @@ class Identity:
     session_id: str | None = None
     known_channel: bool = True
     permissions: tuple[str, ...] = field(default_factory=tuple)
+    # Override model chat dari allowed_channels.llm_model_id (ditentukan admin); None = per role.
+    model_id: int | None = None
 
     @property
     def scope_label(self) -> str:
@@ -132,7 +134,9 @@ class IdentityResolver:
         scope = derive_user_scope(role_name, facility)
 
         row = await self._lookup("web", claims.sub)
+        model_id: int | None = None
         if row is not None and getattr(row, "is_active", True):
+            model_id = getattr(row, "llm_model_id", None)
             row_role = getattr(row, "role", "public")
             ai_role = "analyst" if row_role == "analyst" else "public"
             reason = f"allowed_channels:{row_role}"
@@ -150,6 +154,7 @@ class IdentityResolver:
             role_name=role_name,
             session_id=claims.session_id,
             permissions=permissions,
+            model_id=model_id,
         )
 
     # ------------------------------------------------------------------ internal (wa/tg)
@@ -173,6 +178,7 @@ class IdentityResolver:
                 reason=f"allowed_channels:{row_role}",
                 display_name=display_name or getattr(row, "display_name", None),
                 known_channel=True,
+                model_id=getattr(row, "llm_model_id", None),
             )
         if self._settings.internal_unknown_channel_policy == "deny":
             raise ApiError(403, "kanal tidak terdaftar")

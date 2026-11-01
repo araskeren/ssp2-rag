@@ -134,7 +134,8 @@ def _parse_json(text: str) -> dict[str, Any]:
 
 
 async def run_judge_eval(services: Services, path: Path) -> EvalReport:
-    assert services.runner is not None and services.llm is not None
+    assert services.runner is not None and services.llm_registry is not None
+    judge = (await services.llm_registry.resolve("judge")).llm
     template = Template(load_prompt("judge.md"))
     report = EvalReport("judge")
     faith_total = covered_total = kp_total = citation_ok = n = 0
@@ -164,7 +165,7 @@ async def run_judge_eval(services: Services, path: Path) -> EvalReport:
             answer=result.answer,
             keypoints="\n".join(f"- {kp}" for kp in case.get("keypoints", [])) or "(tidak ada)",
         )
-        verdict_msg = await services.llm.ainvoke([HumanMessage(content=prompt)])
+        verdict_msg = await judge.ainvoke([HumanMessage(content=prompt)])
         verdict = _parse_json(
             verdict_msg.text
             if isinstance(getattr(verdict_msg, "text", None), str)

@@ -6,11 +6,12 @@ import asyncio
 import re
 import time
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
 from datetime import date
 from typing import Any
 
+from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 
 from ai_service.agent.context import ChatContext, RequestTrace
@@ -21,11 +22,13 @@ from ai_service.config import Settings
 from ai_service.db.models import ChatSession
 from ai_service.db.repositories import AuditRepo, ChatRepo
 from ai_service.errors import ApiError
+from ai_service.llm.registry import LlmRegistry
 from ai_service.logging import get_logger
 from ai_service.rag.retriever import Retriever
 
 log = get_logger(__name__)
 CITATION_RE = re.compile(r"\[(\d+)\]")
+_AGENT_CACHE_MAX = 32
 
 
 @dataclass
@@ -86,21 +89,46 @@ class ChatRunner:
     def __init__(
         self,
         settings: Settings,
-        agent: Any,
+        agent: Any | None,
         chats: ChatRepo,
         audit: AuditRepo,
         *,
-        model_name: str,
+        model_name: str = "",
         backend_name: str = "postgres",
         retriever: Retriever | None = None,
+        registry: LlmRegistry | None = None,
+        agent_factory: Callable[[BaseChatModel], Any] | None = None,
     ) -> None:
+        """`agent` tetap (test) ATAU `registry` + `agent_factory` (model di-resolve per identitas)."""
+        if agent is None and (registry is None or agent_factory is None):
+            raise ValueError("ChatRunner butuh agent atau registry + agent_factory")
         self._settings = settings
         self._agent = agent
+        self._registry = registry
+        self._agent_factory = agent_factory
+        self._agents: dict[str, Any] = {}
         self._chats = chats
         self._audit = audit
         self._model_name = model_name
         self._backend_name = backend_name
         self._retriever = retriever
+
+    async def agent_for(self, identity: Identity) -> tuple[Any, str]:
+        """Agent + label model untuk identitas ini (override kanal → role → default → env)."""
+        if self._agent is not None or self._registry is None or self._agent_factory is None:
+            return self._agent, self._model_name
+        try:
+            resolved = await self._registry.resolve("chat", identity.ai_role, identity.model_id)
+        except Exception as exc:  # noqa: BLE001 — konfigurasi provider rusak
+            log.error("model chat gagal di-resolve", error=str(exc))
+            raise ApiError(503, "model LLM belum dikonfigurasi dengan benar") from exc
+        agent = self._agents.get(resolved.key)
+        if agent is None:
+            if len(self._agents) >= _AGENT_CACHE_MAX:
+                self._agents.clear()
+            agent = self._agent_factory(resolved.llm)
+            self._agents[resolved.key] = agent
+        return agent, resolved.label
 
     async def _prefetch(self, ctx: ChatContext, query: str) -> None:
         """Retrieval awal (deterministik) sebelum agent: sumber dicatat, konteks masuk prompt sistem."""
@@ -174,19 +202,20 @@ class ChatRunner:
     async def run(self, identity: Identity, session_id: str, query: str) -> ChatResult:
         query = self.validate_query(query)
         await self.ensure_session(identity, session_id)
+        agent, model_name = await self.agent_for(identity)
         ctx = self._context(identity, session_id)
         await self._prefetch(ctx, query)
         messages = await self._history(session_id) + [HumanMessage(content=query)]
         started = time.perf_counter()
         try:
             async with asyncio.timeout(self._settings.chat_timeout_s):
-                state = await self._agent.ainvoke(
+                state = await agent.ainvoke(
                     {"messages": messages}, context=ctx, config=self._config()
                 )
         except TimeoutError as exc:
             raise ApiError(504, "asisten tidak merespons tepat waktu, coba lagi") from exc
         answer, usage = self._extract(state)
-        return await self._finalize(ctx, query, answer, usage, started)
+        return await self._finalize(ctx, query, answer, usage, started, model_name)
 
     # ------------------------------------------------------------------ stream
     async def stream(
@@ -194,6 +223,7 @@ class ChatRunner:
     ) -> AsyncIterator[tuple[str, dict[str, Any]]]:
         query = self.validate_query(query)
         await self.ensure_session(identity, session_id)
+        agent, model_name = await self.agent_for(identity)
         ctx = self._context(identity, session_id)
         messages = await self._history(session_id) + [HumanMessage(content=query)]
         yield (
@@ -208,7 +238,7 @@ class ChatRunner:
         final_state: Any = None
         try:
             async with asyncio.timeout(self._settings.chat_timeout_s):
-                async for event in self._agent.astream_events(
+                async for event in agent.astream_events(
                     {"messages": messages}, context=ctx, version="v2", config=self._config()
                 ):
                     kind = event["event"]
@@ -259,7 +289,7 @@ class ChatRunner:
         if "".join(streamed) != answer and answer:
             yield "token", {"t": answer if not streamed else answer[len("".join(streamed)) :]}
 
-        result = await self._finalize(ctx, query, answer, usage, started)
+        result = await self._finalize(ctx, query, answer, usage, started, model_name)
         if result.sources:
             yield "sources", {"items": result.sources}
         if result.sql is not None:
@@ -312,7 +342,13 @@ class ChatRunner:
         return []
 
     async def _finalize(
-        self, ctx: ChatContext, query: str, answer: str, usage: dict[str, int], started: float
+        self,
+        ctx: ChatContext,
+        query: str,
+        answer: str,
+        usage: dict[str, int],
+        started: float,
+        model_name: str | None = None,
     ) -> ChatResult:
         latency_ms = int((time.perf_counter() - started) * 1000)
         trace = ctx.trace
@@ -332,7 +368,7 @@ class ChatRunner:
                 "access_denied": trace.denied,
                 "sources": sources or None,
                 "sql_result": sql_stored,
-                "model": self._model_name,
+                "model": model_name or self._model_name,
                 "token_usage": usage,
                 "latency_ms": latency_ms,
             },

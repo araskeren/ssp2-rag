@@ -6,7 +6,6 @@ import asyncio
 from typing import Any
 
 from langchain_core.embeddings import Embeddings
-from langchain_openai import OpenAIEmbeddings
 from sqlalchemy import text
 from tenacity import AsyncRetrying, retry_if_exception, stop_after_attempt, wait_exponential
 
@@ -36,21 +35,12 @@ def _is_transient(exc: BaseException) -> bool:
     }
 
 
-def build_embeddings(settings: Settings) -> OpenAIEmbeddings:
-    kwargs: dict[str, Any] = {
-        "model": settings.embedding_model,
-        "base_url": settings.effective_embedding_base_url,
-        "api_key": settings.effective_embedding_api_key or "sk-none",
-        "chunk_size": 64,
-        "timeout": settings.llm_timeout_s,
-        "max_retries": 2,
-    }
-    if settings.embedding_send_dimensions:
-        kwargs["dimensions"] = settings.embedding_dim
-    if not settings.embedding_is_openai:
-        # Server non-OpenAI (Ollama/vLLM/TEI) mentokenisasi sendiri; kirim teks mentah.
-        kwargs["check_embedding_ctx_length"] = False
-    return OpenAIEmbeddings(**kwargs)
+def build_embeddings(settings: Settings) -> Embeddings:
+    """Embedding dari konfigurasi env (EMBEDDING_*); registry DB memakai `llm.factory.build_embeddings`."""
+    from ai_service.llm.factory import build_embeddings as build_from_spec
+    from ai_service.llm.registry import LlmRegistry
+
+    return build_from_spec(LlmRegistry(settings).env_embedding_spec(), settings)
 
 
 class EmbeddingService:
