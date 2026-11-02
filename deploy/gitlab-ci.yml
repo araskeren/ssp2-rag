@@ -113,6 +113,9 @@ container_scanning_ai:
 
 deploy_dev_ai:
   extends: .deploy
+  tags:
+    - deploy
+    - dev-deploy
   variables:
     COMPOSE_FILE_AI: docker/docker-compose.dev.ai-service.yaml
     AI_HEALTH_PORT: "3040"
@@ -127,6 +130,9 @@ deploy_dev_ai:
 
 deploy_prod_ai:
   extends: .deploy
+  tags:
+    - deploy
+    - prod-deploy
   variables:
     COMPOSE_FILE_AI: docker/docker-compose.prod.ai-service.yaml
     AI_HEALTH_PORT: "3006"
