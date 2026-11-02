@@ -50,6 +50,12 @@ def _invalidate(services: Services) -> None:
         services.llm_registry.invalidate()
 
 
+# Batas indeks HNSW pgvector untuk tipe vector; lebih dari ini kolomnya tidak bisa dibuat.
+EMBEDDING_DIM_MAX = 2000
+EMBEDDING_DIM_ERROR = (
+    f"embedding_dim: maksimal {EMBEDDING_DIM_MAX} (batas indeks pencarian). "
+    "Isi dimensi yang didukung model; tombol Uji menampilkan dimensi yang dihasilkan."
+)
 EMBEDDING_DATA_CONFLICT = (
     "Sudah ada dokumen terindeks dengan model embedding lain. Hapus semua dokumen di halaman "
     "Dokumen Panduan, ubah modelnya, lalu unggah ulang."
@@ -60,6 +66,8 @@ async def _apply_embedding(services: Services, model: str, dim: int | None) -> N
     """Selaraskan kolom vektor sebelum penugasan disimpan; vektor lama tidak bisa dipakai model lain."""
     if services.db is None or not dim:
         return
+    if dim > EMBEDDING_DIM_MAX:
+        raise ApiError(400, "validasi request gagal", [EMBEDDING_DIM_ERROR])
     target = services.settings.model_copy(update={"embedding_model": model, "embedding_dim": dim})
     try:
         await ensure_embedding_config(services.db, target)
@@ -189,6 +197,8 @@ def _validate_model(provider: Any, kind: str, embedding_dim: int | None) -> None
             )
         if not embedding_dim:
             raise ApiError(400, "validasi request gagal", ["embedding_dim: wajib untuk embedding"])
+        if embedding_dim > EMBEDDING_DIM_MAX:
+            raise ApiError(400, "validasi request gagal", [EMBEDDING_DIM_ERROR])
 
 
 @router.get("/models")

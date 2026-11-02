@@ -81,6 +81,18 @@ def message_text(message: BaseMessage | None) -> str:
     return "".join(parts)
 
 
+MODEL_CONFIG_ERROR = "model AI belum dikonfigurasi dengan benar"
+
+
+def is_provider_auth_error(exc: BaseException | None) -> bool:
+    """Provider menolak kunci: masalah konfigurasi, bukan gangguan sesaat. Bisa terbungkus LangChain."""
+    while exc is not None:
+        if type(exc).__name__ in {"AuthenticationError", "PermissionDeniedError"}:
+            return True
+        exc = exc.__cause__
+    return False
+
+
 def is_answer_event(event: dict[str, Any]) -> bool:
     """astream_events juga merekam LLM di dalam tool (mis. penyusun SQL) walau dipanggil ainvoke."""
     return (event.get("metadata") or {}).get("langgraph_node") != "tools"
@@ -223,6 +235,11 @@ class ChatRunner:
                 )
         except TimeoutError as exc:
             raise ApiError(504, "asisten tidak merespons tepat waktu, coba lagi") from exc
+        except Exception as exc:
+            if is_provider_auth_error(exc):
+                log.error("provider menolak kunci model chat", error=str(exc))
+                raise ApiError(503, MODEL_CONFIG_ERROR) from exc
+            raise
         answer, usage = self._extract(state)
         return await self._finalize(ctx, query, answer, usage, started, model_name)
 
@@ -285,7 +302,10 @@ class ChatRunner:
             return
         except Exception as exc:  # noqa: BLE001
             log.exception("stream chat gagal", error=str(exc))
-            yield "error", {"statusCode": 500, "message": "terjadi kesalahan internal"}
+            if is_provider_auth_error(exc):
+                yield "error", {"statusCode": 503, "message": MODEL_CONFIG_ERROR}
+            else:
+                yield "error", {"statusCode": 500, "message": "terjadi kesalahan internal"}
             return
 
         answer, usage = (

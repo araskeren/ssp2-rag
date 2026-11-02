@@ -410,6 +410,31 @@ async def test_embedding_assignment_applies_live_and_refuses_when_data_exists(pg
                 json={"purpose": "embedding", "model_id": model["id"]},
             )
 
+        # Melebihi batas indeks: ditolak dengan pesan jelas, bukan galat 500 saat ALTER kolom.
+        r = await client.post(
+            "/api/v1/admin/llm/models",
+            headers=headers,
+            json={
+                "provider_id": provider["id"],
+                "name": "emb-raksasa",
+                "model": "x",
+                "kind": "embedding",
+                "embedding_dim": 16000,
+            },
+        )
+        assert r.status_code == 400 and "maksimal 2000" in str(r.json())
+
+        # Baris lama yang terlanjur melebihi batas juga ditolak rapi saat ditugaskan.
+        raksasa = await buat("emb-raksasa-lama", 2000)
+        async with pg_db.engine.begin() as conn:
+            await conn.execute(
+                text("UPDATE llm_models SET embedding_dim = 16000 WHERE id = :id"),
+                {"id": raksasa["id"]},
+            )
+        services.llm_registry.invalidate()
+        r = await tugaskan(raksasa)
+        assert r.status_code == 400 and "maksimal 2000" in str(r.json())
+
         kecil = await buat("emb-kecil", 32)
         besar = await buat("emb-besar", 128)
 

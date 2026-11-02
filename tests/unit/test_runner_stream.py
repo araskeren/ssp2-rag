@@ -9,7 +9,7 @@ from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage
 from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResult
 from langchain_core.tools import tool
 
-from ai_service.agent.runner import is_answer_event, message_text
+from ai_service.agent.runner import is_answer_event, is_provider_auth_error, message_text
 
 SQL_INTERNAL = '{"sql": "SELECT 1"}'
 
@@ -87,3 +87,18 @@ async def test_llm_inside_tool_does_not_leak_into_answer_tokens():
     # Tanpa saringan, SQL internal memang muncul; ini yang mencegah tes lolos percuma.
     assert "SELECT" in "".join(all_tokens)
     assert "".join(answer_tokens) == "Jawaban akhir"
+
+
+class AuthenticationError(Exception):
+    """Nama sama dengan galat SDK openai/anthropic; yang dicocokkan adalah namanya."""
+
+
+def test_provider_auth_error_detected_directly_and_when_wrapped():
+    assert is_provider_auth_error(AuthenticationError("401"))
+
+    pembungkus = RuntimeError("gagal memanggil model")
+    pembungkus.__cause__ = AuthenticationError("401")
+    assert is_provider_auth_error(pembungkus)
+
+    assert not is_provider_auth_error(RuntimeError("timeout"))
+    assert not is_provider_auth_error(None)
