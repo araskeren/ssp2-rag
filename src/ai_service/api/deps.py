@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from fastapi import Depends, Header, Request
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from ai_service.auth.apikey import match_api_key
 from ai_service.auth.identity import Identity
@@ -34,10 +35,17 @@ def client_ip(request: Request) -> str:
     return request.client.host if request.client else ""
 
 
-def bearer_token(authorization: str | None = Header(default=None)) -> str:
-    if not authorization or not authorization.lower().startswith("bearer "):
+# Skema keamanan (bukan parameter Header) agar Swagger UI menampilkan tombol "Authorize";
+# parameter header bernama Authorization diabaikan Swagger UI sesuai spesifikasi OpenAPI.
+_bearer_scheme = HTTPBearer(auto_error=False)
+
+
+def bearer_token(
+    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
+) -> str:
+    if credentials is None or credentials.scheme.lower() != "bearer":
         raise ApiError(401, "header Authorization Bearer wajib diisi")
-    token = authorization[7:].strip()
+    token = credentials.credentials.strip()
     if not token:
         raise ApiError(401, "token kosong")
     return token
