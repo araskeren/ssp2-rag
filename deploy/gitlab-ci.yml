@@ -86,6 +86,11 @@ build_ai:
     - if: ($CI_COMMIT_BRANCH == "dev" || $CI_COMMIT_BRANCH == "main") && $SSH_CHECK != "true"
       when: manual
 
+# Job bawaan template memindai image <slug>:<sha> yang tidak pernah dibuild; kita pakai container_scanning_ai.
+container_scanning:
+  rules:
+    - when: never
+
 container_scanning_ai:
   extends: container_scanning
   stage: security
@@ -132,8 +137,7 @@ deploy_dev_ai:
       when: manual
 
 # SEMENTARA: cek koneksi SSH ke server dev saja (tanpa lint/test/build).
-# Jalankan: Build → Pipelines → Run pipeline, branch dev, variabel SSH_CHECK=true
-# (+ CONTAINER_SCANNING_DISABLED=true agar scanner template tidak ikut jalan). Hapus job ini setelah beres.
+# Jalankan: Build → Pipelines → Run pipeline, branch dev, variabel SSH_CHECK=true. Hapus job ini setelah beres.
 ssh_check_dev:
   extends: .deploy
   tags:
