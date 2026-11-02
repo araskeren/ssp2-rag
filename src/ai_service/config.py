@@ -27,11 +27,6 @@ SECRET_FIELDS: frozenset[str] = frozenset(
     }
 )
 
-ANALYST_ROLES_DEFAULT = (
-    "Administrator,Developer,Admin Pusdatin,Admin Kemenkes,Operator Kemenkes,"
-    "Eksekutif Kemenkes,Eksekutif Provinsi,Eksekutif KabKota,Eksekutif Faskes"
-)
-
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -56,8 +51,9 @@ class Settings(BaseSettings):
     be_base_url: str = "http://localhost:3001"
     be_timeout_s: float = 3.0
     profile_cache_ttl_s: int = 300
-    ai_analyst_roles: str = ANALYST_ROLES_DEFAULT
-    ai_analyst_permission: str = "menu_epi_intel:ai"
+    # Akses analis diatur lewat permission BE; nama role hanya untuk pengecualian eksplisit.
+    ai_analyst_roles: str = ""
+    ai_analyst_permission: str = "ai_chat:analyze"
     internal_unknown_channel_policy: Literal["public", "deny"] = "public"
 
     # --- LLM (OpenAI-compatible) ---

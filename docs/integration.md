@@ -53,8 +53,8 @@ Aturan:
   `sessionId`, menolak `isTemp`.
 - **Profil**: `GET /auth/profile` dipanggil per sesi (cache 5 menit) dengan `X-Forwarded-For` IP
   pengguna. Karena throttler BE global per IP, pertimbangkan `@SkipThrottle()` pada endpoint ini.
-- **Role analis**: default `AI_ANALYST_ROLES` (superadmin, Kemenkes, Eksekutif) dan permission
-  `menu_epi_intel:ai`. Bila BE menambah role/permission khusus (mis. `ai_chat:analyze`), cukup ubah env.
+- **Akses analis**: permission `ai_chat:analyze` (modul BE "Asisten AI"), diatur per role di
+  Manajemen › Role. `AI_ANALYST_ROLES` kosong secara default; isi hanya untuk pengecualian eksplisit.
 - **Grant DB (DBA, sekali + setiap ada tabel baru)**:
   ```bash
   psql -h <host-pg-be> -U postgres -d satu_data_penyakit -v ai_ro_password='<rahasia>' -v DBNAME=satu_data_penyakit -f scripts/grant-ai-ro.sql

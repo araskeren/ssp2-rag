@@ -11,7 +11,8 @@ def test_default_local_settings():
     assert s.api_key_list == ["dev-api-key"]
     assert s.effective_embedding_base_url == s.llm_base_url
     assert s.embedding_is_openai is True
-    assert "Administrator" in s.analyst_role_set
+    assert s.analyst_role_set == frozenset()
+    assert s.ai_analyst_permission == "ai_chat:analyze"
 
 
 def test_prod_requires_non_default_secrets():

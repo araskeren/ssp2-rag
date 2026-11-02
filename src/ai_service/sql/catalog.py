@@ -169,7 +169,6 @@ MODULE_ALIASES: dict[str, tuple[str, ...]] = {
     "ili": ("ili", "influenza"),
     "covid_19": ("covid", "korona", "corona", "sars-cov"),
     "ispa": ("ispa", "pneumonia"),
-    "monkey_pox": ("mpox", "monkeypox", "monkey pox", "cacar monyet"),
     "pd3i": (
         "pd3i",
         "campak",

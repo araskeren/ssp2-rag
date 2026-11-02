@@ -31,8 +31,8 @@ services:
       BE_BASE_URL: ${BE_BASE_URL_DOCKER:-http://host.docker.internal:3001}
       BE_TIMEOUT_S: ${BE_TIMEOUT_S:-3}
       PROFILE_CACHE_TTL_S: ${PROFILE_CACHE_TTL_S:-300}
-      AI_ANALYST_ROLES: ${AI_ANALYST_ROLES:-Administrator,Developer,Admin Pusdatin,Admin Kemenkes,Operator Kemenkes,Eksekutif Kemenkes,Eksekutif Provinsi,Eksekutif KabKota,Eksekutif Faskes}
-      AI_ANALYST_PERMISSION: ${AI_ANALYST_PERMISSION:-menu_epi_intel:ai}
+      AI_ANALYST_ROLES: ${AI_ANALYST_ROLES:-}
+      AI_ANALYST_PERMISSION: ${AI_ANALYST_PERMISSION:-ai_chat:analyze}
       INTERNAL_UNKNOWN_CHANNEL_POLICY: ${INTERNAL_UNKNOWN_CHANNEL_POLICY:-public}
       LLM_BASE_URL: ${LLM_BASE_URL:-https://api.openai.com/v1}
       LLM_API_KEY: ${LLM_API_KEY:-}
