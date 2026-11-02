@@ -116,6 +116,7 @@ deploy_dev_ai:
   variables:
     COMPOSE_FILE_AI: docker/docker-compose.dev.ai-service.yaml
     AI_HEALTH_PORT: "3040"
+    SERVER_IP: $SERVER_IP_DEV
   environment:
     name: dev
     url: https://api-nar-dev.kemkes.go.id/ai/healthz
@@ -129,6 +130,7 @@ deploy_prod_ai:
   variables:
     COMPOSE_FILE_AI: docker/docker-compose.prod.ai-service.yaml
     AI_HEALTH_PORT: "3006"
+    SERVER_IP: $SERVER_IP_PROD
   environment:
     name: production
     url: https://data-nar.kemkes.go.id/ai/healthz
