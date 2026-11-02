@@ -28,7 +28,7 @@ DECLARE
   s text;
   t text;
 BEGIN
-  FOREACH s IN ARRAY ARRAY['master','covid_19','ili','sari','ispa','hpv','monkey_pox','pd3i','pie','karkes','epi_intel'] LOOP
+  FOREACH s IN ARRAY ARRAY['master','covid_19','ili','sari','ispa','hpv','pd3i','pie','karkes','epi_intel'] LOOP
     IF EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = s) THEN
       EXECUTE format('GRANT USAGE ON SCHEMA %I TO ai_ro', s);
     END IF;
@@ -41,7 +41,6 @@ BEGIN
     'sari.records', 'sari.specimens', 'sari.test_results', 'sari.aggregate_reports',
     'ispa.records', 'ispa.specimens', 'ispa.test_results', 'ispa.reports', 'ispa.profiles',
     'hpv.records', 'hpv.specimens', 'hpv.test_results', 'hpv.aggregate_reports',
-    'monkey_pox.records', 'monkey_pox.specimens', 'monkey_pox.test_results',
     'pd3i.records', 'pd3i.specimens', 'pd3i.test_results',
     'pie.records', 'pie.specimens', 'pie.test_results',
     'karkes.aggregate_reports', 'epi_intel.klb_events'

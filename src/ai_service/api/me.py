@@ -4,15 +4,21 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends
 
-from ai_service.api.deps import get_web_identity
-from ai_service.api.schemas import MeOut, ScopeOut
+from ai_service.api.deps import get_services, get_web_identity
+from ai_service.api.schemas import FeaturesOut, MeOut, ScopeOut
 from ai_service.auth.identity import Identity
+from ai_service.features import FeatureState
+from ai_service.services import Services
 
 router = APIRouter(prefix="/api/v1", tags=["chat"])
 
 
 @router.get("/me", response_model=MeOut, response_model_exclude_none=True)
-async def me(identity: Identity = Depends(get_web_identity)) -> MeOut:
+async def me(
+    identity: Identity = Depends(get_web_identity),
+    services: Services = Depends(get_services),
+) -> MeOut:
+    state = await services.features.current() if services.features else FeatureState()
     return MeOut(
         user_id=identity.principal_id,
         email=identity.email,
@@ -22,4 +28,6 @@ async def me(identity: Identity = Depends(get_web_identity)) -> MeOut:
         analyst_reason=identity.reason,
         scope=ScopeOut(**identity.scope.to_dict()),
         scope_label=identity.scope_label,
+        features=FeaturesOut(helpdesk=state.helpdesk, analysis=state.analysis),
+        available=state.available_for(is_analyst=identity.is_analyst),
     )

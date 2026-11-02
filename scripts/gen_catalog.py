@@ -388,33 +388,6 @@ VIEWS.append(
 )
 VIEWS.append(
     surveilans_view(
-        name="dn_monkey_pox_surveilans",
-        schema="monkey_pox",
-        modul="Mpox (monkeypox)",
-        deskripsi="Kasus surveilans Mpox beserta spesimen dan hasil laboratoriumnya. Modul ini tidak mencatat tanggal hasil (dipakai tanggal periksa).",
-        status_values=["Suspek", "Probable", "Konfirmasi", "Kontak Erat"],
-        stage_values=STAGES,
-        kesimpulan_values=None,
-        extra_columns=[
-            col("suhu_tubuh", "numeric", "Suhu tubuh saat skrining (°C)"),
-            col("status_kontak", "text", "Status kontak erat"),
-            col("outcome", "text", "Luaran kasus"),
-            col("tanggal_outcome", "date", "Tanggal luaran kasus"),
-            col("tanggal_selesai_pemantauan", "date", "Tanggal selesai pemantauan"),
-        ],
-        extra_select=[
-            ("suhu_tubuh", "r.suhu_tubuh"),
-            ("status_kontak", "r.status_kontak"),
-            ("outcome", "r.outcome"),
-            ("tanggal_outcome", "r.tanggal_outcome"),
-            ("tanggal_selesai_pemantauan", "r.tanggal_selesai_pemantauan"),
-        ],
-        res_expr={"tanggal_hasil": "CAST(NULL AS date)"},
-        contoh=contoh_standar("dn_monkey_pox_surveilans", "Mpox"),
-    )
-)
-VIEWS.append(
-    surveilans_view(
         name="dn_pd3i_surveilans",
         schema="pd3i",
         modul="PD3I (Penyakit yang Dapat Dicegah Dengan Imunisasi)",

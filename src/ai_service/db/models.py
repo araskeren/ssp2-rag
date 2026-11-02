@@ -272,3 +272,14 @@ class LlmAssignment(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()")
     )
+
+
+class FeatureFlag(Base):
+    __tablename__ = "feature_flags"
+
+    key: Mapped[str] = mapped_column(Text, primary_key=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()")
+    )
+    updated_by: Mapped[str | None] = mapped_column(Text)

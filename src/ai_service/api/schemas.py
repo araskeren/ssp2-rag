@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class ScopeOut(BaseModel):
@@ -12,6 +12,11 @@ class ScopeOut(BaseModel):
     provinsi_kode: str | None = None
     kabupaten_kota_kode: str | None = None
     facility_id: int | None = None
+
+
+class FeaturesOut(BaseModel):
+    helpdesk: bool
+    analysis: bool
 
 
 class MeOut(BaseModel):
@@ -23,6 +28,8 @@ class MeOut(BaseModel):
     analyst_reason: str
     scope: ScopeOut
     scope_label: str
+    features: FeaturesOut
+    available: bool
 
 
 class ChannelIn(BaseModel):
@@ -91,6 +98,15 @@ class PageOut(BaseModel):
     total: int
     page: int
     limit: int
+
+
+class FeatureFlagsPatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    assistant: bool | None = None
+    helpdesk: bool | None = None
+    analysis: bool | None = None
+    connector: bool | None = None
 
 
 class SearchIn(BaseModel):

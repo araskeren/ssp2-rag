@@ -60,7 +60,7 @@ PROFILES = {
         "name": "Admin Kemenkes",
         "role": {"id": 4, "name": "Admin Kemenkes"},
         "facility": FACILITY_KEMENKES,
-        "permissions": ["sari_records:read", "menu_sari:dashboard"],
+        "permissions": ["sari_records:read", "menu_sari:dashboard", "ai_chat:analyze"],
     },
     "43": {
         "name": "Operator Faskes",
@@ -78,7 +78,7 @@ PROFILES = {
         "name": "Eksekutif KabKota",
         "role": {"id": 14, "name": "Eksekutif KabKota"},
         "facility": FACILITY_DINKES_KOTA,
-        "permissions": ["sari_records:read"],
+        "permissions": ["sari_records:read", "ai_chat:analyze"],
     },
     "46": {
         "name": "Viewer Pusat",

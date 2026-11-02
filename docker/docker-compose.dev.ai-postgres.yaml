@@ -12,9 +12,9 @@ services:
     container_name: ssp2_dev_ai_postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: postgres
+      POSTGRES_USER: ${AI_PG_USER:-postgres}
       POSTGRES_PASSWORD: ${AI_PG_PASSWORD:?AI_PG_PASSWORD wajib diisi}
-      POSTGRES_DB: postgres
+      POSTGRES_DB: ${AI_PG_DB:-ai_service}
       AI_RO_PASSWORD: ${AI_RO_PASSWORD:-ai_ro}
     deploy:
       resources:

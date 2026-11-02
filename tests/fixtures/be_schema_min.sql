@@ -185,7 +185,6 @@ DROP SCHEMA IF EXISTS pd3i CASCADE;
 DROP SCHEMA IF EXISTS pie CASCADE;
 DROP SCHEMA IF EXISTS hpv CASCADE;
 CREATE SCHEMA ispa;
-CREATE SCHEMA monkey_pox;
 CREATE SCHEMA pd3i;
 CREATE SCHEMA pie;
 CREATE SCHEMA hpv;
@@ -234,26 +233,6 @@ CREATE TABLE ispa.specimens (LIKE sari.specimens INCLUDING ALL);
 ALTER TABLE ispa.specimens ADD FOREIGN KEY ("recordId") REFERENCES ispa.records(id);
 CREATE TABLE ispa.test_results (LIKE sari.test_results INCLUDING ALL);
 ALTER TABLE ispa.test_results ADD FOREIGN KEY ("specimenId") REFERENCES ispa.specimens(id);
-
-CREATE TABLE monkey_pox.records (
-  id uuid PRIMARY KEY DEFAULT uuidv7(),
-  "patientId" uuid NOT NULL REFERENCES master.patients(id),
-  status varchar(50) NOT NULL, "currentStage" varchar(50) NOT NULL, "isActive" boolean NOT NULL DEFAULT true,
-  "facilityId" int, "createdById" int, "updatedById" int,
-  suhu_tubuh numeric(4,2), gejala jsonb, risiko_paparan jsonb, komorbid jsonb, status_kontak varchar(50),
-  outcome varchar(50), tanggal_selesai_pemantauan date, tanggal_outcome date, keterangan_pe text,
-  "createdAt" timestamp NOT NULL DEFAULT now(), "updatedAt" timestamp NOT NULL DEFAULT now()
-);
-CREATE TABLE monkey_pox.specimens (LIKE sari.specimens INCLUDING ALL);
-ALTER TABLE monkey_pox.specimens ADD COLUMN foto_klinis_url varchar(255);
-ALTER TABLE monkey_pox.specimens ADD FOREIGN KEY ("recordId") REFERENCES monkey_pox.records(id);
-CREATE TABLE monkey_pox.test_results (
-  id uuid PRIMARY KEY DEFAULT uuidv7(),
-  "specimenId" uuid NOT NULL REFERENCES monkey_pox.specimens(id),
-  tanggal_terima date, tanggal_periksa date NOT NULL, "jenisPemeriksaan" varchar(50) NOT NULL, ct_values jsonb, kesimpulan varchar(50) NOT NULL,
-  "facilityId" int, "createdById" int, "updatedById" int,
-  "createdAt" timestamp NOT NULL DEFAULT now(), "updatedAt" timestamp NOT NULL DEFAULT now()
-);
 
 CREATE TABLE pd3i.records (
   id uuid PRIMARY KEY DEFAULT uuidv7(),

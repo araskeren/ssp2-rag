@@ -67,6 +67,7 @@ PUSKESMAS = {
 
 
 def _resolver(rows: dict | None = None, **settings_kw):
+    settings_kw.setdefault("ai_analyst_roles", "Admin Kemenkes,Eksekutif KabKota")
     settings = Settings(_env_file=None, jwt_secret=SECRET, be_base_url=BE, **settings_kw)
     rows = rows or {}
 
@@ -104,11 +105,31 @@ async def test_public_faskes_scope_and_permission_grant():
 
     route.mock(
         return_value=httpx.Response(
-            200, json=_profile("Operator Faskes", PUSKESMAS, ["menu_epi_intel:ai"])
+            200, json=_profile("Operator Faskes", PUSKESMAS, ["ai_chat:analyze"])
         )
     )
     identity2 = await resolver.resolve_web(_token(sub=44))
-    assert identity2.ai_role == "analyst" and identity2.reason == "permission:menu_epi_intel:ai"
+    assert identity2.ai_role == "analyst" and identity2.reason == "permission:ai_chat:analyze"
+
+
+@respx.mock
+async def test_default_config_grants_analyst_only_by_permission():
+    _, resolver = _resolver(ai_analyst_roles="")
+    route = respx.get(f"{BE}/auth/profile")
+    # Izin menu Epi Intel dipegang banyak role, jadi tidak boleh membuka analisis data.
+    route.mock(
+        return_value=httpx.Response(
+            200, json=_profile("Admin Kemenkes", None, ["menu_epi_intel:ai"])
+        )
+    )
+    identity = await resolver.resolve_web(_token(sub=47))
+    assert identity.ai_role == "public" and identity.reason == "role_public"
+
+    route.mock(
+        return_value=httpx.Response(200, json=_profile("Admin Kemenkes", None, ["ai_chat:analyze"]))
+    )
+    identity2 = await resolver.resolve_web(_token(sub=48))
+    assert identity2.ai_role == "analyst"
 
 
 @respx.mock

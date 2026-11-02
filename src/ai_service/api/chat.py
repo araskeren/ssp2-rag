@@ -35,6 +35,20 @@ def _runner(services: Services):
     return services.runner
 
 
+FEATURE_OFF_DETAIL = "Asisten AI sedang dinonaktifkan administrator"
+
+
+async def enforce_available(services: Services, identity: Identity) -> None:
+    """503, bukan 403: konektor & panel memperlakukannya sebagai layanan sementara tidak tersedia."""
+    if services.features is None:
+        return
+    state = await services.features.current()
+    if not state.available_for(is_analyst=identity.is_analyst):
+        raise ApiError(503, FEATURE_OFF_DETAIL)
+    if identity.platform != "web" and not state.connector:
+        raise ApiError(503, FEATURE_OFF_DETAIL)
+
+
 def enforce_rate_limit(request: Request, services: Services, identity: Identity) -> None:
     if services.rate_chat is not None and not services.rate_chat.allow(
         f"{identity.platform}:{identity.principal_id}"
@@ -55,6 +69,7 @@ async def chat(
     identity: Identity = Depends(get_web_identity),
     services: Services = Depends(get_services),
 ) -> dict:
+    await enforce_available(services, identity)
     enforce_rate_limit(request, services, identity)
     session_id = resolve_web_session_id(body.session_id)
     result = await _runner(services).run(identity, session_id, body.query)
@@ -68,6 +83,7 @@ async def chat_stream(
     identity: Identity = Depends(get_web_identity),
     services: Services = Depends(get_services),
 ) -> Response:
+    await enforce_available(services, identity)
     enforce_rate_limit(request, services, identity)
     session_id = resolve_web_session_id(body.session_id)
     runner = _runner(services)

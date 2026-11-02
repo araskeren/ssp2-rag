@@ -71,7 +71,7 @@ async def test_admin_catalog_endpoint():
         body = r.json()
         assert (
             body["issues"] == []
-            and len(body["views"]) >= 13
+            and len(body["views"]) >= 12
             and "### dn_sari_surveilans" in body["prompt"]
         )
         assert (await client.get("/api/v1/admin/catalog")).status_code == 401

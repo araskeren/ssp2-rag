@@ -22,6 +22,7 @@ from ai_service.config import Settings
 from ai_service.db.models import ChatSession
 from ai_service.db.repositories import AuditRepo, ChatRepo
 from ai_service.errors import ApiError
+from ai_service.features import FeatureFlags, FeatureState
 from ai_service.llm.registry import LlmRegistry
 from ai_service.logging import get_logger
 from ai_service.rag.retriever import Retriever
@@ -80,6 +81,23 @@ def message_text(message: BaseMessage | None) -> str:
     return "".join(parts)
 
 
+MODEL_CONFIG_ERROR = "model AI belum dikonfigurasi dengan benar"
+
+
+def is_provider_auth_error(exc: BaseException | None) -> bool:
+    """Provider menolak kunci: masalah konfigurasi, bukan gangguan sesaat. Bisa terbungkus LangChain."""
+    while exc is not None:
+        if type(exc).__name__ in {"AuthenticationError", "PermissionDeniedError"}:
+            return True
+        exc = exc.__cause__
+    return False
+
+
+def is_answer_event(event: dict[str, Any]) -> bool:
+    """astream_events juga merekam LLM di dalam tool (mis. penyusun SQL) walau dipanggil ainvoke."""
+    return (event.get("metadata") or {}).get("langgraph_node") != "tools"
+
+
 def _usage_of(message: Any) -> tuple[int, int]:
     usage = getattr(message, "usage_metadata", None) or {}
     return int(usage.get("input_tokens", 0) or 0), int(usage.get("output_tokens", 0) or 0)
@@ -98,6 +116,7 @@ class ChatRunner:
         retriever: Retriever | None = None,
         registry: LlmRegistry | None = None,
         agent_factory: Callable[[BaseChatModel], Any] | None = None,
+        features: FeatureFlags | None = None,
     ) -> None:
         """`agent` tetap (test) ATAU `registry` + `agent_factory` (model di-resolve per identitas)."""
         if agent is None and (registry is None or agent_factory is None):
@@ -112,6 +131,7 @@ class ChatRunner:
         self._model_name = model_name
         self._backend_name = backend_name
         self._retriever = retriever
+        self._features = features
 
     async def agent_for(self, identity: Identity) -> tuple[Any, str]:
         """Agent + label model untuk identitas ini (override kanal → role → default → env)."""
@@ -132,7 +152,7 @@ class ChatRunner:
 
     async def _prefetch(self, ctx: ChatContext, query: str) -> None:
         """Retrieval awal (deterministik) sebelum agent: sumber dicatat, konteks masuk prompt sistem."""
-        if not self._settings.rag_prefetch or self._retriever is None:
+        if not self._settings.rag_prefetch or self._retriever is None or not ctx.features.helpdesk:
             return
         try:
             chunks = await self._retriever.retrieve(query)
@@ -173,13 +193,14 @@ class ChatRunner:
         rows = await self._chats.last_messages(session_id, self._settings.chat_history_messages)
         return trim_history(rows_to_messages(rows), self._settings.chat_history_max_tokens)
 
-    def _context(self, identity: Identity, session_id: str) -> ChatContext:
+    async def _context(self, identity: Identity, session_id: str) -> ChatContext:
         return ChatContext(
             identity=identity,
             session_id=session_id,
             message_id=str(uuid.uuid4()),
             today=date.today(),
             trace=RequestTrace(),
+            features=await self._features.current() if self._features else FeatureState(),
         )
 
     def _config(self) -> dict[str, Any]:
@@ -203,7 +224,7 @@ class ChatRunner:
         query = self.validate_query(query)
         await self.ensure_session(identity, session_id)
         agent, model_name = await self.agent_for(identity)
-        ctx = self._context(identity, session_id)
+        ctx = await self._context(identity, session_id)
         await self._prefetch(ctx, query)
         messages = await self._history(session_id) + [HumanMessage(content=query)]
         started = time.perf_counter()
@@ -214,6 +235,11 @@ class ChatRunner:
                 )
         except TimeoutError as exc:
             raise ApiError(504, "asisten tidak merespons tepat waktu, coba lagi") from exc
+        except Exception as exc:
+            if is_provider_auth_error(exc):
+                log.error("provider menolak kunci model chat", error=str(exc))
+                raise ApiError(503, MODEL_CONFIG_ERROR) from exc
+            raise
         answer, usage = self._extract(state)
         return await self._finalize(ctx, query, answer, usage, started, model_name)
 
@@ -224,7 +250,7 @@ class ChatRunner:
         query = self.validate_query(query)
         await self.ensure_session(identity, session_id)
         agent, model_name = await self.agent_for(identity)
-        ctx = self._context(identity, session_id)
+        ctx = await self._context(identity, session_id)
         messages = await self._history(session_id) + [HumanMessage(content=query)]
         yield (
             "meta",
@@ -244,10 +270,11 @@ class ChatRunner:
                     kind = event["event"]
                     data = event.get("data") or {}
                     if kind == "on_chat_model_start":
-                        streamed = []
+                        if is_answer_event(event):
+                            streamed = []
                     elif kind == "on_chat_model_stream":
                         text = message_text(data.get("chunk"))
-                        if text:
+                        if text and is_answer_event(event):
                             streamed.append(text)
                             yield "token", {"t": text}
                     elif kind == "on_chat_model_end":
@@ -255,7 +282,8 @@ class ChatRunner:
                         p, c = _usage_of(output)
                         prompt_tokens += p
                         completion_tokens += c
-                        last_model_text = message_text(output) or last_model_text
+                        if is_answer_event(event):
+                            last_model_text = message_text(output) or last_model_text
                     elif kind == "on_tool_start":
                         yield "tool", {"name": event.get("name"), "status": "start"}
                     elif kind == "on_tool_end":
@@ -274,7 +302,10 @@ class ChatRunner:
             return
         except Exception as exc:  # noqa: BLE001
             log.exception("stream chat gagal", error=str(exc))
-            yield "error", {"statusCode": 500, "message": "terjadi kesalahan internal"}
+            if is_provider_auth_error(exc):
+                yield "error", {"statusCode": 503, "message": MODEL_CONFIG_ERROR}
+            else:
+                yield "error", {"statusCode": 500, "message": "terjadi kesalahan internal"}
             return
 
         answer, usage = (

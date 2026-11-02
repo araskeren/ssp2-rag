@@ -101,6 +101,26 @@ Response = `ChatResponse` + `text_plain` (markdown → teks WA/TG + daftar sumbe
 | `GET /api/v1/admin/sql-audit?status=&principal_id=&from=&to=&page=&limit=` | audit SQL: `ok\|rejected\|error\|timeout\|access_denied`, SQL yang dibuat & dieksekusi, view, percobaan, durasi |
 | `GET /api/v1/admin/catalog?prompt=` | katalog virtual view (kolom, scope, contoh) + hasil validasi; `prompt=true` menyertakan rendering untuk LLM |
 
+## Admin — sakelar fitur (`X-API-Key` admin)
+
+Dikelola dari menu Manajemen › AI di backoffice. Tersimpan di DB, berlaku langsung di replika penerima dan paling lama
+`FEATURE_FLAGS_TTL_S` (default 30 detik) di replika lain. Gagal membaca DB memakai nilai terakhir; tanpa nilai, semua dianggap mati.
+
+| Endpoint | Fungsi |
+|---|---|
+| `GET /api/v1/admin/features` | `{items:[{key, enabled, updated_at, updated_by}]}`; `key` ∈ `assistant`, `helpdesk`, `analysis`, `connector` |
+| `PUT /api/v1/admin/features` | `{assistant?, helpdesk?, analysis?, connector?}`; header opsional `X-Admin-Actor` mengisi `updated_by` (juga `requested_by` di ingest) |
+
+| Sakelar OFF | Efek |
+|---|---|
+| `assistant` | `/chat`, `/chat/stream`, `/internal/chat` → 503 |
+| `connector` | `/internal/chat` → 503 |
+| `helpdesk` | Tanpa prefetch; `cari_dokumen` tidak ditawarkan ke model dan diblokir bila tetap dipanggil |
+| `analysis` | `analisis_data` tidak ditawarkan dan diblokir, untuk semua role, tanpa baris audit |
+
+Tidak ada fitur tersisa bagi pengguna (helpdesk OFF, dan analisis OFF atau bukan analis) → 503. `GET /me` menambahkan
+`features {helpdesk, analysis}` dan `available`.
+
 ## Admin — registry LLM (`X-API-Key` admin)
 
 Provider LLM disimpan di DB, masing-masing dengan credentials sendiri; admin menentukan model yang dipakai.
@@ -110,7 +130,7 @@ Provider LLM disimpan di DB, masing-masing dengan credentials sendiri; admin men
 | `GET/POST /api/v1/admin/llm/providers` · `GET/PATCH/DELETE /providers/{id}` | provider: `name` (slug), `kind` = `openai_compatible` \| `anthropic_compatible`, `base_url` (kosong = endpoint resmi; OpenAI-compatible harus memuat `/v1`), `api_key` (write-only, dienkripsi Fernet `AI_SECRETS_KEY`; respons hanya `api_key_set` + `api_key_hint`; PATCH `api_key: ""` = hapus), `headers` (header ekstra; nilai sensitif ditampilkan `***`, kirim balik `***` = pertahankan), `timeout_s`, `is_active`. DELETE 409 bila masih punya model |
 | `GET/POST /api/v1/admin/llm/models?provider_id=&kind=` · `GET/PATCH/DELETE /models/{id}` | model: `provider_id`, `name` (alias, slug unik), `model` (id upstream, mis. `claude-sonnet-4-5`, `gpt-4o-mini`, `qwen2.5:14b`), `kind` = `chat` \| `embedding` (embedding hanya provider openai_compatible, wajib `embedding_dim`), `temperature?`, `max_tokens?` (Anthropic default `ANTHROPIC_DEFAULT_MAX_TOKENS`), `params` (kwargs ekstra LangChain, mis. `{"top_p":0.9}`; embedding: `{"send_dimensions": false}`), `is_active`. DELETE 409 bila masih ditugaskan |
 | `POST /api/v1/admin/llm/models/{id}/test` | panggilan nyata ke provider → `{ok, latency_ms, output}` (chat) / `{ok, dim, dim_ok}` (embedding) / `{ok:false, error}` |
-| `GET /api/v1/admin/llm/assignments` · `PUT /assignments` `{purpose, ai_role?, model_id}` · `DELETE /assignments?purpose=&ai_role=` | penugasan model: `purpose` = `chat` \| `sql` \| `judge` \| `embedding`; `ai_role` (`public`\|`analyst`) hanya untuk `chat`, null = default. Embedding: respons `restart_required`/`reindex_required` (berlaku saat boot berikutnya; model/dimensi berbeda → `ai-service reindex --confirm`) |
+| `GET /api/v1/admin/llm/assignments` · `PUT /assignments` `{purpose, ai_role?, model_id}` · `DELETE /assignments?purpose=&ai_role=` | penugasan model: `purpose` = `chat` \| `sql` \| `judge` \| `embedding`; `ai_role` (`public`\|`analyst`) hanya untuk `chat`, null = default. Embedding berlaku tanpa restart (replika lain ≤ `LLM_REGISTRY_TTL_S`); model/dimensi berbeda saat sudah ada potongan dokumen → 409, hapus dokumennya dulu lalu unggah ulang |
 | `GET /api/v1/admin/llm/resolve?ai_role=&platform=&channel_id=` | debug: model efektif per keperluan untuk role/kanal |
 
 Urutan resolusi model chat: `allowed_channels.llm_model_id` → penugasan `(chat, ai_role)` → `(chat, default)` →

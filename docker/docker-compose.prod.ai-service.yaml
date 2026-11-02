@@ -30,8 +30,8 @@ services:
       BE_BASE_URL: ${BE_BASE_URL:-http://ssp2_prod_nginx/api/v1}
       BE_TIMEOUT_S: ${BE_TIMEOUT_S:-3}
       PROFILE_CACHE_TTL_S: ${PROFILE_CACHE_TTL_S:-300}
-      AI_ANALYST_ROLES: ${AI_ANALYST_ROLES:-Administrator,Developer,Admin Pusdatin,Admin Kemenkes,Operator Kemenkes,Eksekutif Kemenkes,Eksekutif Provinsi,Eksekutif KabKota,Eksekutif Faskes}
-      AI_ANALYST_PERMISSION: ${AI_ANALYST_PERMISSION:-menu_epi_intel:ai}
+      AI_ANALYST_ROLES: ${AI_ANALYST_ROLES:-}
+      AI_ANALYST_PERMISSION: ${AI_ANALYST_PERMISSION:-ai_chat:analyze}
       INTERNAL_UNKNOWN_CHANNEL_POLICY: ${INTERNAL_UNKNOWN_CHANNEL_POLICY:-public}
       LLM_BASE_URL: ${LLM_BASE_URL:?LLM_BASE_URL wajib diisi (endpoint OpenAI-compatible on-prem)}
       LLM_API_KEY: ${LLM_API_KEY:-}
@@ -42,6 +42,7 @@ services:
       LLM_MAX_CONCURRENCY: ${LLM_MAX_CONCURRENCY:-8}
       AI_SECRETS_KEY: ${AI_SECRETS_KEY:-}
       LLM_REGISTRY_TTL_S: ${LLM_REGISTRY_TTL_S:-30}
+      FEATURE_FLAGS_TTL_S: ${FEATURE_FLAGS_TTL_S:-30}
       ANTHROPIC_DEFAULT_MAX_TOKENS: ${ANTHROPIC_DEFAULT_MAX_TOKENS:-4096}
       EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-}
       EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}

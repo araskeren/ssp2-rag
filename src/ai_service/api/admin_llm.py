@@ -29,6 +29,7 @@ from ai_service.llm.factory import LlmConfigError, build_chat_model, build_embed
 from ai_service.llm.registry import model_spec, provider_spec
 from ai_service.llm.repo import LlmRepo
 from ai_service.llm.spec import PURPOSE_MODEL_KIND
+from ai_service.rag.embeddings import EmbeddingConfigError, ensure_embedding_config
 from ai_service.services import Services
 
 router = APIRouter(
@@ -47,6 +48,37 @@ def _repo(services: Services) -> LlmRepo:
 def _invalidate(services: Services) -> None:
     if services.llm_registry is not None:
         services.llm_registry.invalidate()
+
+
+# Batas indeks HNSW pgvector untuk tipe vector; lebih dari ini kolomnya tidak bisa dibuat.
+EMBEDDING_DIM_MAX = 2000
+EMBEDDING_DIM_ERROR = (
+    f"embedding_dim: maksimal {EMBEDDING_DIM_MAX} (batas indeks pencarian). "
+    "Isi dimensi yang didukung model; tombol Uji menampilkan dimensi yang dihasilkan."
+)
+EMBEDDING_DATA_CONFLICT = (
+    "Sudah ada dokumen terindeks dengan model embedding lain. Hapus semua dokumen di halaman "
+    "Dokumen Panduan, ubah modelnya, lalu unggah ulang."
+)
+
+
+async def _apply_embedding(services: Services, model: str, dim: int | None) -> None:
+    """Selaraskan kolom vektor sebelum penugasan disimpan; vektor lama tidak bisa dipakai model lain."""
+    if services.db is None or not dim:
+        return
+    if dim > EMBEDDING_DIM_MAX:
+        raise ApiError(400, "validasi request gagal", [EMBEDDING_DIM_ERROR])
+    target = services.settings.model_copy(update={"embedding_model": model, "embedding_dim": dim})
+    try:
+        await ensure_embedding_config(services.db, target)
+    except EmbeddingConfigError as exc:
+        raise ApiError(409, EMBEDDING_DATA_CONFLICT) from exc
+
+
+async def _sync_embedding(services: Services) -> None:
+    _invalidate(services)
+    if services.embeddings is not None:
+        await services.embeddings.sync()
 
 
 def _provider_out(row: Any) -> LlmProviderOut:
@@ -165,6 +197,8 @@ def _validate_model(provider: Any, kind: str, embedding_dim: int | None) -> None
             )
         if not embedding_dim:
             raise ApiError(400, "validasi request gagal", ["embedding_dim: wajib untuk embedding"])
+        if embedding_dim > EMBEDDING_DIM_MAX:
+            raise ApiError(400, "validasi request gagal", [EMBEDDING_DIM_ERROR])
 
 
 @router.get("/models")
@@ -214,8 +248,17 @@ async def patch_model(
     _validate_model(provider, current.kind, data.get("embedding_dim", current.embedding_dim))
     if "params" in data and data["params"] is None:
         data["params"] = {}
+    embedding_aktif = current.kind == "embedding" and any(
+        a.purpose == "embedding" and a.model_id == model_id for a in await repo.list_assignments()
+    )
+    if embedding_aktif:
+        await _apply_embedding(
+            services,
+            data.get("model", current.model),
+            data.get("embedding_dim", current.embedding_dim),
+        )
     row = await _commit(repo.update_model(model_id, data), "nama model sudah dipakai")
-    _invalidate(services)
+    await _sync_embedding(services)
     return LlmModelOut.model_validate(row)
 
 
@@ -288,16 +331,11 @@ async def put_assignment(body: LlmAssignmentIn, services: Services = Depends(get
         )
     if not model.is_active:
         raise ApiError(400, "validasi request gagal", ["model_id: model tidak aktif"])
-    row = await repo.upsert_assignment(body.purpose, body.ai_role, body.model_id)
-    _invalidate(services)
-    out: dict[str, Any] = LlmAssignmentOut.model_validate(row).model_dump()
     if body.purpose == "embedding":
-        current = services.settings
-        out["restart_required"] = True
-        out["reindex_required"] = (
-            model.model != current.embedding_model or model.embedding_dim != current.embedding_dim
-        )
-    return out
+        await _apply_embedding(services, model.model, model.embedding_dim)
+    row = await repo.upsert_assignment(body.purpose, body.ai_role, body.model_id)
+    await _sync_embedding(services)
+    return LlmAssignmentOut.model_validate(row).model_dump()
 
 
 @router.delete("/assignments", status_code=204)
@@ -306,9 +344,13 @@ async def delete_assignment(
     ai_role: str | None = Query(default=None, pattern="^(public|analyst)$"),
     services: Services = Depends(get_services),
 ) -> Response:
-    if not await _repo(services).delete_assignment(purpose, ai_role):
+    repo = _repo(services)
+    if purpose == "embedding" and services.llm_registry is not None:
+        bawaan = services.llm_registry.env_embedding_spec()
+        await _apply_embedding(services, bawaan.model, bawaan.embedding_dim)
+    if not await repo.delete_assignment(purpose, ai_role):
         raise ApiError(404, "penugasan tidak ditemukan")
-    _invalidate(services)
+    await _sync_embedding(services)
     return Response(status_code=204)
 
 
@@ -349,7 +391,8 @@ async def resolve_models(
         "source": embedding.source,
         "model": embedding.model,
         "dim": embedding.embedding_dim,
-        "active_in_process": embedding.model == services.settings.embedding_model
-        and embedding.embedding_dim == services.settings.embedding_dim,
+        "active_in_process": services.embeddings is not None
+        and embedding.model == services.embeddings.model
+        and embedding.embedding_dim == services.embeddings.dim,
     }
     return out

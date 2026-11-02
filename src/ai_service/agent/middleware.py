@@ -24,6 +24,10 @@ from ai_service.logging import get_logger
 log = get_logger(__name__)
 
 RESTRICTED_TOOLS = frozenset({"analisis_data"})
+FEATURE_OFF_MESSAGE = (
+    "Fitur ini sedang dinonaktifkan administrator. Sampaikan hal itu kepada pengguna "
+    "dan jangan mencoba cara lain."
+)
 
 # Pola pertanyaan data: angka/statistik/agregasi/tren. Dipakai intent router deterministik.
 DATA_INTENT_RE = re.compile(
@@ -70,6 +74,9 @@ def build_middleware(audit_denial: DenialAudit, *, force_tool: bool = True) -> l
 
     @wrap_model_call
     async def intent_router(request: ModelRequest, handler):  # noqa: ANN001
+        disabled = request.runtime.context.features.disabled_tools
+        if disabled:
+            request = request.override(tools=[t for t in request.tools if t.name not in disabled])
         choice = decide_tool_choice(list(request.messages), force_tool)
         if choice and any(t.name == choice for t in request.tools):
             request = request.override(tool_choice=choice)
@@ -82,6 +89,11 @@ def build_middleware(audit_denial: DenialAudit, *, force_tool: bool = True) -> l
         name = str(call.get("name"))
         args = call.get("args") or {}
         question = str(args.get("pertanyaan", ""))[:2000]
+
+        # Model bisa tetap memanggil tool yang sudah dibuang dari daftarnya.
+        if name in ctx.features.disabled_tools:
+            ctx.trace.tool_calls.append(ToolCallRecord(name, "disabled", "fitur dinonaktifkan"))
+            return ToolMessage(content=FEATURE_OFF_MESSAGE, tool_call_id=call["id"], name=name)
 
         if name in RESTRICTED_TOOLS and not ctx.identity.is_analyst:
             ctx.trace.denied = True
