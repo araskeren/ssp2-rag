@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 from langchain_core.embeddings import Embeddings
@@ -44,12 +45,44 @@ def build_embeddings(settings: Settings) -> Embeddings:
 
 
 class EmbeddingService:
-    def __init__(self, settings: Settings, embeddings: Embeddings | None = None) -> None:
+    """`resolver` + `builder` mengikuti registry LLM tanpa restart; tanpa keduanya modelnya tetap."""
+
+    def __init__(
+        self,
+        settings: Settings,
+        embeddings: Embeddings | None = None,
+        *,
+        resolver: Callable[[], Awaitable[Any]] | None = None,
+        builder: Callable[[Any, Settings], Embeddings] | None = None,
+        spec_key: str | None = None,
+    ) -> None:
         self.dim = settings.embedding_dim
         self.model = settings.embedding_model
         self.batch_size = 64
+        self._settings = settings
         self._embeddings = embeddings or build_embeddings(settings)
+        self._resolver = resolver
+        self._builder = builder
+        self._spec_key = spec_key
         self._semaphore = asyncio.Semaphore(max(1, settings.llm_max_concurrency))
+
+    async def sync(self) -> None:
+        """Ikuti penugasan & kunci provider terbaru; gagal = tetap memakai model yang berjalan."""
+        if self._resolver is None or self._builder is None:
+            return
+        try:
+            spec = await self._resolver()
+            if spec.key == self._spec_key:
+                return
+            embeddings = self._builder(spec, self._settings)
+        except Exception as exc:  # noqa: BLE001 — konfigurasi rusak tidak boleh mematikan retrieval
+            log.error("model embedding gagal diperbarui", error=str(exc))
+            return
+        self._embeddings = embeddings
+        self.model = spec.model
+        self.dim = int(spec.embedding_dim or self.dim)
+        self._spec_key = spec.key
+        log.info("model embedding diperbarui", model=self.model, dim=self.dim)
 
     async def _call(self, fn: Any, *args: Any) -> Any:
         async for attempt in AsyncRetrying(
@@ -68,10 +101,11 @@ class EmbeddingService:
             if len(vector) != self.dim:
                 raise EmbeddingConfigError(
                     f"model embedding '{self.model}' mengembalikan {len(vector)} dimensi, "
-                    f"sedangkan EMBEDDING_DIM={self.dim}; sesuaikan EMBEDDING_DIM lalu reindex"
+                    f"sedangkan dimensi terdaftar {self.dim}; samakan dimensinya lalu indeks ulang"
                 )
 
     async def embed_texts(self, texts: list[str]) -> list[list[float]]:
+        await self.sync()
         out: list[list[float]] = []
         for start in range(0, len(texts), self.batch_size):
             batch = texts[start : start + self.batch_size]
@@ -81,6 +115,7 @@ class EmbeddingService:
         return out
 
     async def embed_query(self, query: str) -> list[float]:
+        await self.sync()
         vector = await self._call(self._embeddings.aembed_query, query)
         self._check([vector])
         return list(map(float, vector))

@@ -250,7 +250,7 @@ async def test_llm_registry_admin_flow(pg_settings, pg_db, fake_provider):
         assert (await assign({"purpose": "embedding", "model_id": gpt["id"]})).status_code == 400
         assert (await assign({"purpose": "chat", "model_id": emb["id"]})).status_code == 400
         r = await assign({"purpose": "embedding", "model_id": emb["id"]})
-        assert r.json()["restart_required"] is True and r.json()["reindex_required"] is False
+        assert r.status_code == 200 and "restart_required" not in r.json()
         listing = (await client.get(f"{BASE}/assignments", headers=ADMIN)).json()["items"]
         assert {(a["purpose"], a["ai_role"]) for a in listing} == {
             ("chat", None),
@@ -362,3 +362,126 @@ async def test_db_embedding_assignment_applies_at_boot(pg_settings, pg_db):
     rebuilt = await build_services(pg_settings, pg_db, with_sql=False, with_agent=False)
     assert rebuilt.settings.embedding_model == "fake-64" and rebuilt.settings.embedding_dim == 64
     assert rebuilt.embeddings._embeddings.openai_api_base == "http://emb.test/v1"  # type: ignore[union-attr]
+
+
+async def test_embedding_assignment_applies_live_and_refuses_when_data_exists(pg_settings, pg_db):
+    """Penugasan dari menu berlaku tanpa restart; model lain ditolak selama ada vektor lama."""
+    settings = pg_settings.model_copy(update={"embedding_dim": 64, "embedding_model": "fake-64"})
+    app = create_app(settings)
+    app.state.db = pg_db
+    services = await build_services(settings, pg_db, with_agent=False, with_sql=False)
+    app.state.services = services
+    headers = {"X-API-Key": "dev-admin-key"}
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://t"
+    ) as client:
+        provider = (
+            await client.post(
+                "/api/v1/admin/llm/providers",
+                headers=headers,
+                json={
+                    "name": "emb-live",
+                    "kind": "openai_compatible",
+                    "base_url": "http://emb.test/v1",
+                    "api_key": "kunci",
+                },
+            )
+        ).json()
+
+        async def buat(name: str, dim: int) -> dict:
+            r = await client.post(
+                "/api/v1/admin/llm/models",
+                headers=headers,
+                json={
+                    "provider_id": provider["id"],
+                    "name": name,
+                    "model": name,
+                    "kind": "embedding",
+                    "embedding_dim": dim,
+                },
+            )
+            assert r.status_code == 201, r.text
+            return r.json()
+
+        async def tugaskan(model: dict) -> httpx.Response:
+            return await client.put(
+                "/api/v1/admin/llm/assignments",
+                headers=headers,
+                json={"purpose": "embedding", "model_id": model["id"]},
+            )
+
+        kecil = await buat("emb-kecil", 32)
+        besar = await buat("emb-besar", 128)
+
+        # Tanpa vektor tersimpan: langsung berlaku, termasuk tipe kolom.
+        assert (await tugaskan(kecil)).status_code == 200
+        assert services.embeddings.model == "emb-kecil" and services.embeddings.dim == 32
+        async with pg_db.engine.connect() as conn:
+            kolom = (
+                await conn.execute(
+                    text(
+                        "SELECT format_type(atttypid, atttypmod) FROM pg_attribute "
+                        "WHERE attrelid = 'document_chunks'::regclass AND attname = 'embedding'"
+                    )
+                )
+            ).scalar()
+        assert kolom == "vector(32)"
+        res = (await client.get("/api/v1/admin/llm/resolve", headers=headers)).json()
+        assert res["embedding"]["active_in_process"] is True
+
+        # Kunci provider baru ikut terbaca tanpa restart.
+        lama = services.embeddings._embeddings
+        r = await client.patch(
+            f"/api/v1/admin/llm/providers/{provider['id']}",
+            headers=headers,
+            json={"api_key": "baru"},
+        )
+        assert r.status_code == 200
+        await services.embeddings.sync()
+        assert services.embeddings._embeddings is not lama
+
+        # Ada vektor tersimpan: model lain ditolak sebelum disimpan, jadi boot berikutnya aman.
+        async with pg_db.engine.begin() as conn:
+            doc_id = (
+                await conn.execute(
+                    text(
+                        "INSERT INTO documents (filename, mime_type, sha256, size_bytes, content, status) "
+                        "VALUES ('a.md', 'text/markdown', :sha, 1, 'isi', 'indexed') RETURNING id"
+                    ),
+                    {"sha": "e" * 64},
+                )
+            ).scalar()
+            vektor = "[" + ",".join(["0.1"] * 32) + "]"
+            await conn.execute(
+                text(
+                    "INSERT INTO document_chunks (id, document_id, chunk_index, content, embedding) "
+                    "VALUES (uuidv7(), :doc, 0, 'isi', CAST(:vec AS vector))"
+                ),
+                {"doc": doc_id, "vec": vektor},
+            )
+        ditolak = await tugaskan(besar)
+        assert ditolak.status_code == 409 and "Hapus semua dokumen" in ditolak.json()["message"]
+        assert services.embeddings.model == "emb-kecil"
+        aktif = (await client.get("/api/v1/admin/llm/assignments", headers=headers)).json()["items"]
+        assert [a["model_id"] for a in aktif if a["purpose"] == "embedding"] == [kecil["id"]]
+
+        # Mengubah model yang sedang ditugaskan dan melepasnya ke env juga ditolak.
+        r = await client.patch(
+            f"/api/v1/admin/llm/models/{kecil['id']}", headers=headers, json={"embedding_dim": 16}
+        )
+        assert r.status_code == 409
+        r = await client.delete(
+            "/api/v1/admin/llm/assignments", headers=headers, params={"purpose": "embedding"}
+        )
+        assert r.status_code == 409
+
+        # Boot ulang tetap berhasil karena penugasan yang tersimpan cocok dengan data.
+        rebuilt = await build_services(settings, pg_db, with_agent=False, with_sql=False)
+        assert rebuilt.settings.embedding_model == "emb-kecil"
+
+        # Setelah dokumen dihapus, model lain boleh dipakai lagi.
+        async with pg_db.engine.begin() as conn:
+            await conn.execute(text("DELETE FROM document_chunks"))
+            await conn.execute(text("DELETE FROM documents WHERE id = :doc"), {"doc": doc_id})
+        assert (await tugaskan(besar)).status_code == 200
+        assert services.embeddings.dim == 128

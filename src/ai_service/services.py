@@ -109,7 +109,11 @@ async def build_services(
     identity = IdentityResolver(settings, profile_client, channels.get)
     documents, jobs, chats, audit = DocumentRepo(db), JobRepo(db), ChatRepo(db), AuditRepo(db)
     embeddings = embeddings or EmbeddingService(
-        settings, build_embeddings(embedding_spec, settings)
+        settings,
+        build_embeddings(embedding_spec, settings),
+        resolver=registry.resolve_embedding_spec,
+        builder=build_embeddings,
+        spec_key=embedding_spec.key,
     )
     store = ChunkStore(db)
     reranker = CrossEncoderReranker(settings.rerank_model) if settings.rerank_enabled else None
