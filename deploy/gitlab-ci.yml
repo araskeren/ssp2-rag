@@ -68,7 +68,7 @@ unit_test_ai:
       junit: report.xml
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-    - if: $CI_COMMIT_BRANCH == "dev" || $CI_COMMIT_BRANCH == "main"
+    - if: ($CI_COMMIT_BRANCH == "dev" || $CI_COMMIT_BRANCH == "main") && $SSH_CHECK != "true"
 
 build_ai:
   stage: build
@@ -83,7 +83,7 @@ build_ai:
     - docker build -t "$DOCKER_IMAGE_AI:$IMAGE_TAG" -t "$DOCKER_IMAGE_AI:$BRANCH_TAG" .
     - docker push -a "$DOCKER_IMAGE_AI"
   rules:
-    - if: $CI_COMMIT_BRANCH == "dev" || $CI_COMMIT_BRANCH == "main"
+    - if: ($CI_COMMIT_BRANCH == "dev" || $CI_COMMIT_BRANCH == "main") && $SSH_CHECK != "true"
       when: manual
 
 container_scanning_ai:
@@ -93,7 +93,7 @@ container_scanning_ai:
     CS_IMAGE: $DOCKER_IMAGE_AI:$BRANCH_TAG
   needs: [build_ai]
   rules:
-    - if: $CI_COMMIT_BRANCH == "dev" || $CI_COMMIT_BRANCH == "main"
+    - if: ($CI_COMMIT_BRANCH == "dev" || $CI_COMMIT_BRANCH == "main") && $SSH_CHECK != "true"
 
 .deploy:
   stage: deploy
@@ -102,7 +102,10 @@ container_scanning_ai:
     - apk add --no-cache openssh-client
     - mkdir -p ~/.ssh && chmod 700 ~/.ssh
     - echo "$SSH_PRIVATE_KEY" | tr -d '\r' > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
-    - ssh-keyscan -H "$SERVER_IP" >> ~/.ssh/known_hosts 2>/dev/null
+    - test -n "$SERVER_IP" || { echo "SERVER_IP kosong (cek SERVER_IP_DEV/SERVER_IP_PROD & scope/protected variable)"; exit 1; }
+    - echo "target $SERVER_IP"
+    - ssh-keyscan -T 10 -H "$SERVER_IP" >> ~/.ssh/known_hosts
+    - test -s ~/.ssh/known_hosts || { echo "tidak dapat host key dari $SERVER_IP (port 22 tidak terjangkau dari runner?)"; exit 1; }
   script:
     - >
       ssh -i ~/.ssh/id_ed25519 "$SSH_USER@$SERVER_IP"
@@ -125,8 +128,26 @@ deploy_dev_ai:
     url: https://api-nar-dev.kemkes.go.id/ai/healthz
   needs: [build_ai]
   rules:
-    - if: $CI_COMMIT_BRANCH == "dev"
+    - if: $CI_COMMIT_BRANCH == "dev" && $SSH_CHECK != "true"
       when: manual
+
+# SEMENTARA: cek koneksi SSH ke server dev saja (tanpa lint/test/build).
+# Jalankan: Build → Pipelines → Run pipeline, branch dev, variabel SSH_CHECK=true
+# (+ CONTAINER_SCANNING_DISABLED=true agar scanner template tidak ikut jalan). Hapus job ini setelah beres.
+ssh_check_dev:
+  extends: .deploy
+  tags:
+    - deploy
+    - dev-deploy
+  variables:
+    SERVER_IP: $SERVER_IP_DEV
+  environment:
+    name: dev
+  needs: []
+  script:
+    - ssh -i ~/.ssh/id_ed25519 -o BatchMode=yes -o ConnectTimeout=10 "$SSH_USER@$SERVER_IP" "echo ssh-ok; hostname; test -d $DEPLOY_DIR && echo deploy-dir-ok"
+  rules:
+    - if: $CI_COMMIT_BRANCH == "dev" && $SSH_CHECK == "true"
 
 deploy_prod_ai:
   extends: .deploy
