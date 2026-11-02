@@ -69,6 +69,7 @@ class Settings(BaseSettings):
     # Fernet key untuk mengenkripsi API key provider di DB (`ai-service llm gen-key`).
     ai_secrets_key: str = ""
     llm_registry_ttl_s: float = 30.0
+    feature_flags_ttl_s: float = 30.0
     anthropic_default_max_tokens: int = 4096
 
     # --- embedding ---

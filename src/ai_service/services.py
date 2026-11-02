@@ -20,6 +20,7 @@ from ai_service.auth.profile_client import ProfileClient
 from ai_service.config import Settings
 from ai_service.db.engine import Database
 from ai_service.db.repositories import AuditRepo, ChannelRepo, ChatRepo, DocumentRepo, JobRepo
+from ai_service.features import FeatureFlags
 from ai_service.llm.crypto import SecretBox
 from ai_service.llm.factory import build_embeddings
 from ai_service.llm.registry import LlmRegistry
@@ -59,6 +60,7 @@ class Services:
     sql_backend: Any | None = None
     rate_chat: RateLimiter | None = None
     rate_ip: RateLimiter | None = None
+    features: FeatureFlags | None = None
 
     async def aclose(self) -> None:
         if self.profile_client is not None:
@@ -136,6 +138,7 @@ async def build_services(
         secret_box=secret_box,
         rate_chat=RateLimiter(settings.rate_limit_chat_per_min),
         rate_ip=RateLimiter(settings.rate_limit_ip_per_min),
+        features=FeatureFlags(db, settings.feature_flags_ttl_s),
     )
 
     # Backend analitik (M4) — opsional; bila gagal, chat tetap jalan tanpa SQL tool nyata.
@@ -175,6 +178,7 @@ async def build_services(
             retriever=retriever,
             registry=registry,
             agent_factory=agent_factory,
+            features=services.features,
         )
         runner_holder["runner"] = services.runner
 

@@ -34,6 +34,17 @@ def render_system_prompt(ctx: ChatContext) -> str:
             "sistem memeriksa kewenangan saat tool dipanggil"
         )
 
+    if not ctx.features.analysis:
+        role_desc += (
+            "; fitur analisis data SEDANG DINONAKTIFKAN administrator, jadi tool `analisis_data` "
+            "tidak tersedia: bila pengguna meminta angka, sampaikan bahwa fitur ini sedang nonaktif"
+        )
+    if not ctx.features.helpdesk:
+        role_desc += (
+            "; fitur helpdesk dokumen SEDANG DINONAKTIFKAN administrator, jadi tool `cari_dokumen` "
+            "tidak tersedia: bila pengguna bertanya prosedur, sampaikan bahwa fitur ini sedang nonaktif"
+        )
+
     if identity.platform == "web":
         format_note = "Gunakan markdown sederhana: daftar, teks tebal, dan tabel kecil bila perlu."
     else:

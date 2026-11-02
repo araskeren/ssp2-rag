@@ -101,6 +101,26 @@ Response = `ChatResponse` + `text_plain` (markdown → teks WA/TG + daftar sumbe
 | `GET /api/v1/admin/sql-audit?status=&principal_id=&from=&to=&page=&limit=` | audit SQL: `ok\|rejected\|error\|timeout\|access_denied`, SQL yang dibuat & dieksekusi, view, percobaan, durasi |
 | `GET /api/v1/admin/catalog?prompt=` | katalog virtual view (kolom, scope, contoh) + hasil validasi; `prompt=true` menyertakan rendering untuk LLM |
 
+## Admin — sakelar fitur (`X-API-Key` admin)
+
+Dikelola dari menu Manajemen › AI di backoffice. Tersimpan di DB, berlaku langsung di replika penerima dan paling lama
+`FEATURE_FLAGS_TTL_S` (default 30 detik) di replika lain. Gagal membaca DB memakai nilai terakhir; tanpa nilai, semua dianggap mati.
+
+| Endpoint | Fungsi |
+|---|---|
+| `GET /api/v1/admin/features` | `{items:[{key, enabled, updated_at, updated_by}]}`; `key` ∈ `assistant`, `helpdesk`, `analysis`, `connector` |
+| `PUT /api/v1/admin/features` | `{assistant?, helpdesk?, analysis?, connector?}`; header opsional `X-Admin-Actor` mengisi `updated_by` (juga `requested_by` di ingest) |
+
+| Sakelar OFF | Efek |
+|---|---|
+| `assistant` | `/chat`, `/chat/stream`, `/internal/chat` → 503 |
+| `connector` | `/internal/chat` → 503 |
+| `helpdesk` | Tanpa prefetch; `cari_dokumen` tidak ditawarkan ke model dan diblokir bila tetap dipanggil |
+| `analysis` | `analisis_data` tidak ditawarkan dan diblokir, untuk semua role, tanpa baris audit |
+
+Tidak ada fitur tersisa bagi pengguna (helpdesk OFF, dan analisis OFF atau bukan analis) → 503. `GET /me` menambahkan
+`features {helpdesk, analysis}` dan `available`.
+
 ## Admin — registry LLM (`X-API-Key` admin)
 
 Provider LLM disimpan di DB, masing-masing dengan credentials sendiri; admin menentukan model yang dipakai.

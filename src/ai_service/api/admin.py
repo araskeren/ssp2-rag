@@ -5,11 +5,18 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Header, Query, UploadFile
 from fastapi.responses import Response
 
 from ai_service.api.deps import get_services, require_admin_key
-from ai_service.api.schemas import ChannelIn, ChannelOut, ChannelPatch, PageOut, SearchIn
+from ai_service.api.schemas import (
+    ChannelIn,
+    ChannelOut,
+    ChannelPatch,
+    FeatureFlagsPatch,
+    PageOut,
+    SearchIn,
+)
 from ai_service.auth.identity import normalize_channel_id
 from ai_service.errors import ApiError
 from ai_service.rag.ingest import (
@@ -24,6 +31,41 @@ from ai_service.services import Services
 router = APIRouter(
     prefix="/api/v1/admin", tags=["admin"], dependencies=[Depends(require_admin_key)]
 )
+
+
+def admin_actor(x_admin_actor: str | None = Header(default=None, max_length=100)) -> str:
+    """Pengguna backoffice di balik API key; BE yang mengisinya, untuk jejak perubahan."""
+    return (x_admin_actor or "").strip() or "admin-api"
+
+
+def _flag_to_dict(row) -> dict:  # noqa: ANN001
+    return {
+        "key": row.key,
+        "enabled": row.enabled,
+        "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+        "updated_by": row.updated_by,
+    }
+
+
+def _features(services: Services):
+    if services.features is None:
+        raise ApiError(503, "database belum siap")
+    return services.features
+
+
+@router.get("/features")
+async def list_features(services: Services = Depends(get_services)) -> dict:
+    return {"items": [_flag_to_dict(r) for r in await _features(services).list_rows()]}
+
+
+@router.put("/features")
+async def update_features(
+    body: FeatureFlagsPatch,
+    actor: str = Depends(admin_actor),
+    services: Services = Depends(get_services),
+) -> dict:
+    rows = await _features(services).update(body.model_dump(exclude_none=True), actor)
+    return {"items": [_flag_to_dict(r) for r in rows]}
 
 
 def _channels(services: Services):
@@ -121,6 +163,7 @@ async def ingest_documents(
     tags: str | None = Form(default=None, description="dipisah koma"),
     replace: bool = Form(default=False),
     sync: bool = Form(default=False),
+    actor: str = Depends(admin_actor),
     services: Services = Depends(get_services),
 ) -> dict:
     ingest = _ingest(services)
@@ -138,7 +181,7 @@ async def ingest_documents(
         source=source or None,
         tags=[t.strip() for t in (tags or "").split(",") if t.strip()],
         replace=replace,
-        requested_by="admin-api",
+        requested_by=actor,
     )
     try:
         job = await ingest.submit(uploaded, options, sync=sync)

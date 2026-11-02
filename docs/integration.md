@@ -55,6 +55,9 @@ Aturan:
   pengguna. Karena throttler BE global per IP, pertimbangkan `@SkipThrottle()` pada endpoint ini.
 - **Akses analis**: permission `ai_chat:analyze` (modul BE "Asisten AI"), diatur per role di
   Manajemen › Role. `AI_ANALYST_ROLES` kosong secara default; isi hanya untuk pengecualian eksplisit.
+- **Menu Manajemen › AI**: BE memanggil API admin lewat `AI_SERVICE_URL` + `AI_SERVICE_ADMIN_KEY` (salah satu `ADMIN_API_KEYS`).
+  Sakelar `assistant` mengikuti `master.modul` baris `asisten-ai`: BE mendorong ke ai-service lebih dulu, bila gagal modul tidak berubah.
+  Deploy ai-service sebelum BE. Menyimpan API key provider dari menu butuh `AI_SECRETS_KEY`.
 - **Grant DB (DBA, sekali + setiap ada tabel baru)**:
   ```bash
   psql -h <host-pg-be> -U postgres -d satu_data_penyakit -v ai_ro_password='<rahasia>' -v DBNAME=satu_data_penyakit -f scripts/grant-ai-ro.sql

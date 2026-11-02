@@ -21,7 +21,7 @@ services:
       PORT: 3000
       LOG_LEVEL: ${LOG_LEVEL:-info}
       CORS_ORIGIN: ${CORS_ORIGIN:-}
-      AI_DATABASE_URL: postgresql+asyncpg://postgres:${AI_PG_PASSWORD:?AI_PG_PASSWORD wajib diisi (samakan dengan compose ai-postgres)}@ssp2_dev_ai_postgres:5432/ai_service
+      AI_DATABASE_URL: postgresql+asyncpg://${AI_PG_USER:-postgres}:${AI_PG_PASSWORD:?AI_PG_PASSWORD wajib diisi (samakan dengan compose ai-postgres)}@ssp2_dev_ai_postgres:5432/${AI_PG_DB:-ai_service}
       AI_DB_POOL_SIZE: ${AI_DB_POOL_SIZE:-5}
       AUTO_MIGRATE: ${AUTO_MIGRATE:-true}
       JWT_SECRET: ${JWT_SECRET:-dev-jwt-secret-samakan-dengan-backend}
@@ -42,6 +42,7 @@ services:
       LLM_MAX_CONCURRENCY: ${LLM_MAX_CONCURRENCY:-8}
       AI_SECRETS_KEY: ${AI_SECRETS_KEY:-}
       LLM_REGISTRY_TTL_S: ${LLM_REGISTRY_TTL_S:-30}
+      FEATURE_FLAGS_TTL_S: ${FEATURE_FLAGS_TTL_S:-30}
       ANTHROPIC_DEFAULT_MAX_TOKENS: ${ANTHROPIC_DEFAULT_MAX_TOKENS:-4096}
       EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-}
       EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
@@ -67,7 +68,7 @@ services:
       RATE_LIMIT_IP_PER_MIN: ${RATE_LIMIT_IP_PER_MIN:-60}
       INTENT_FORCE_TOOL: ${INTENT_FORCE_TOOL:-true}
       SQL_BACKEND: ${SQL_BACKEND:-postgres}
-      ANALYTICS_PG_DSN: ${ANALYTICS_PG_DSN_DOCKER:-postgresql://ai_ro:${AI_RO_PASSWORD:-ai_ro}@ssp2_dev_postgres:5432/satu_data_penyakit}
+      ANALYTICS_PG_DSN: ${ANALYTICS_PG_DSN_DOCKER:-postgresql://${AI_RO_USER:-ai_ro}:${AI_RO_PASSWORD:-ai_ro}@${DB_HOST:-ssp2_dev_postgres}:${DB_PORT:-5432}/${DB_NAME:-satu_data_penyakit}}
       ANALYTICS_PG_POOL_SIZE: ${ANALYTICS_PG_POOL_SIZE:-3}
       ANALYTICS_CH_URL: ${ANALYTICS_CH_URL:-http://ssp2_dev_clickhouse:8123}
       ANALYTICS_CH_USER: ${ANALYTICS_CH_USER:-app_ro}

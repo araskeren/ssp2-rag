@@ -7,6 +7,7 @@ from datetime import date
 from typing import Any
 
 from ai_service.auth.identity import Identity
+from ai_service.features import FeatureState
 from ai_service.rag.retriever import Source
 
 
@@ -83,6 +84,7 @@ class ChatContext:
     today: date
     trace: RequestTrace = field(default_factory=RequestTrace)
     prefetched_context: str | None = None
+    features: FeatureState = field(default_factory=FeatureState)
 
     @property
     def ai_role(self) -> str:
