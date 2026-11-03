@@ -21,7 +21,7 @@ services:
       APP_ENV: prod # dokumentasi Swagger DINONAKTIFKAN (hanya local/dev)
       PORT: 3000
       LOG_LEVEL: ${LOG_LEVEL:-info}
-      AI_DATABASE_URL: postgresql+asyncpg://${AI_PG_USER:-postgres}:${AI_PG_PASSWORD:?AI_PG_PASSWORD wajib diisi (samakan dengan compose ai-postgres)}@ssp2_dev_ai_postgres:5432/${AI_PG_DB:-ai_service}
+      AI_DATABASE_URL: postgresql+asyncpg://${AI_PG_USER:-postgres}:${AI_PG_PASSWORD:?AI_PG_PASSWORD wajib diisi (samakan dengan compose ai-postgres)}@ssp2_prod_ai_postgres:5432/${AI_PG_DB:-ai_service}
       AI_DB_POOL_SIZE: ${AI_DB_POOL_SIZE:-5}
       AUTO_MIGRATE: ${AUTO_MIGRATE:-true}
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET wajib diisi (samakan dengan backend)}
