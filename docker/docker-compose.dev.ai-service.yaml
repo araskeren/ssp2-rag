@@ -26,7 +26,7 @@ services:
       AUTO_MIGRATE: ${AUTO_MIGRATE:-true}
       JWT_SECRET: ${JWT_SECRET:-dev-jwt-secret-samakan-dengan-backend}
       API_KEYS: ${API_KEYS:-dev-api-key}
-      ADMIN_API_KEYS: ${ADMIN_API_KEYS:-dev-admin-key}
+      ADMIN_API_KEYS: ${AI_SERVICE_ADMIN_KEY:-dev-admin-key}
       BE_BASE_URL: ${BE_BASE_URL_DOCKER:-http://ssp2_dev_backend_1:3000}
       BE_TIMEOUT_S: ${BE_TIMEOUT_S:-3}
       PROFILE_CACHE_TTL_S: ${PROFILE_CACHE_TTL_S:-300}
