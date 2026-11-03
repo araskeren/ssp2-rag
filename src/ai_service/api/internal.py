@@ -1,4 +1,8 @@
-"""Endpoint internal untuk konektor WA/TG (X-API-Key): sesi diturunkan dari platform + channel_id."""
+"""Endpoint internal untuk konektor WA/TG (X-API-Key): sesi diturunkan dari platform + channel_id.
+
+Konektor WhatsApp = notification-service (repo ssp2-notificcation, sidecar wa-gateway/Baileys):
+ia yang menerima & membalas pesan; ai-service hanya menyusun jawaban.
+"""
 
 from __future__ import annotations
 
@@ -26,7 +30,8 @@ async def internal_chat(
         body.platform, body.channel_id, body.display_name
     )
     await enforce_available(services, identity)
-    enforce_rate_limit(request, services, identity)
+    # semua pengguna datang dari IP konektor → hanya limit per nomor/chat yang relevan
+    enforce_rate_limit(request, services, identity, check_ip=False)
     session_id = f"{identity.platform}_{identity.principal_id}"
     result = await _runner(services).run(identity, session_id, body.query)
     payload = result.to_dict()

@@ -17,35 +17,46 @@ Token pengguna tersimpan di cookie httpOnly, jadi FE memanggil ai-service lewat 
 5. Tampilkan `sources[]` sebagai daftar sitasi (ref, judul/berkas, halaman) dan `sql` sebagai
    tabel + SQL yang bisa disalin.
 
-## 2. Kontrak konektor WhatsApp/Telegram (notification-service atau layanan penerus)
+## 2. Konektor WhatsApp = notification-service
 
-notification-service saat ini **outbound-only**. Komponen yang menerima pesan masuk (webhook
-Telegram, Baileys/Meta untuk WA) memanggil ai-service lalu mengirim balasan lewat jalur
-notification-service biasa:
+Kanal WhatsApp **dimiliki notification-service** (repo `ssp2-notificcation`); ai-service hanya
+"otak" AI. Panduan lengkap sisi konektor: `ssp2-notificcation/docs/whatsapp-chat.md`.
 
 ```
-pesan masuk → POST {AI_URL}/api/v1/internal/chat
-  header: X-API-Key: <API_KEYS ai-service>, Content-Type: application/json
-  body:   {"platform": "wa"|"tg", "channel_id": "<nomor E.164 tanpa +  |  chat id>", "query": "<teks>", "display_name": "<nama>"}
-respons → {"answer", "text_plain", "sources", "sql", "identity": {"ai_role", "scope_level", "known_channel"}, ...}
-balasan → envelope notification-service:
-  {"source": "ai-connector", "event": "chat.reply", "idempotency_key": "<platform>:<message id provider>",
-   "title": "Asisten Satu Data Penyakit", "body": "<text_plain>",
-   "channels": {"whatsapp": {"to": ["+628…"]}}  atau  {"telegram": {"chat_ids": ["<chat id>"]}}}
+WhatsApp ⇄ wa-gateway (Baileys, sidecar notification) → notification-service (Go)
+   simpan + dedup per message_id → gabung pesan beruntun per nomor →
+   POST {AI_SERVICE_URL}/api/v1/internal/chat
+     header: X-API-Key: <salah satu API_KEYS ai-service>, X-Request-ID: <id pesan masuk>
+     body:   {"platform": "wa", "channel_id": "628…", "query": "<teks gabungan>", "display_name": "<nama>"}
+   ← {"answer", "text_plain", "intent", "sources", "sql", "identity": {"ai_role", "scope_level", …}, …}
+   → envelope notifikasi biasa {"source": "wa-chat", "event": "chat.reply",
+       "idempotency_key": "wa-chat:<provider>:<message id pertama>", "body": "<text_plain>",
+       "channels": {"whatsapp": {"to": ["+628…"], "text": "<text_plain>"}}} → dispatcher → WhatsApp
 ```
 
-Aturan:
-- `text_plain` sudah tanpa markdown tabel/heading dan ≤ 4000 karakter (batas `body` gateway); bila
-  perlu pecah menjadi beberapa pesan.
-- Idempoten per pesan masuk (pakai id pesan provider sebagai kunci; ai-service sendiri tidak
-  mendeduplikasi).
-- Timeout panggilan 120 s (`CHAT_TIMEOUT_S` 90 s + jaringan). Pada 429/503/504 kirim balasan
-  permintaan maaf baku, jangan retry agresif.
+Yang perlu disiapkan di ai-service:
+
+| Item | Nilai |
+|---|---|
+| `API_KEYS` | tambahkan `AI_SERVICE_API_KEY` milik notification-service (daftar koma) |
+| URL dari notification | `http://ssp2_dev_ai:3000` (dev/local, network `ssp2-dev-net` / `ssp2-local-net`), `http://ssp2_prod_ai:3000` (prod, alias semua replika) |
+| Flag `connector` | harus menyala (`GET/PUT /api/v1/admin/features`); mati → 503 → notification membalas "layanan tidak tersedia" |
+| `allowed_channels` | opsional: nomor analis (`channel add wa 628… --role analyst --scope …`); nomor lain → `public` |
+| `CHAT_MAX_QUERY_CHARS` | samakan dengan `AI_CHAT_MAX_QUERY_CHARS` notification (default 2000) |
+
+Perilaku yang diandalkan konektor:
+- `text_plain` sudah tanpa markdown tabel/heading dan ≤ 4000 karakter (batas `body` gateway).
+- ai-service **tidak** mendeduplikasi; idempotensi per pesan masuk ditangani notification-service.
+- Timeout klien 120 s (`CHAT_TIMEOUT_S` 90 s + jaringan). Pada 429/503/504/403/400 konektor
+  mengirim balasan baku tanpa retry; hanya gangguan jaringan / 5xx lain yang di-retry.
+- Limit per IP tidak berlaku di `/internal/chat` (semua pengguna lewat IP konektor); limit per nomor
+  (`RATE_LIMIT_CHAT_PER_MIN`) tetap berlaku.
 - Kanal yang boleh memakai analisis data didaftarkan admin di `allowed_channels`
   (`ai-service channel add wa 628… --role analyst --scope PROVINCE --provinsi-kode 33`).
   Nomor disimpan dalam bentuk digit E.164 (`628…`).
-- Endpoint internal tidak diekspos nginx publik (403); konektor memakai listener internal `:8080`
-  (`http://ssp2_prod_nginx:8080/ai/api/v1/internal/chat`) atau DNS container langsung.
+- Endpoint internal tidak diekspos nginx publik (403); konektor memakai DNS container langsung
+  atau listener internal `:8080` (`http://ssp2_prod_nginx:8080/ai/api/v1/internal/chat`).
+- Telegram (`platform: "tg"`) tetap didukung kontraknya; konektornya belum dibuat.
 
 ## 3. Backend NestJS (turborepo/apps/be)
 
