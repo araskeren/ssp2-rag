@@ -88,6 +88,9 @@ Klien browser memakai `fetch` + `ReadableStream` (bukan `EventSource`, karena me
 Response = `ChatResponse` + `text_plain` (markdown → teks WA/TG + daftar sumber, ≤ 4000 karakter)
 + `identity {ai_role, scope_level, scope_label, known_channel}`. Kanal tak terdaftar: `public`
 (atau 403 bila `INTERNAL_UNKNOWN_CHANNEL_POLICY=deny`).
+Rate limit: hanya per kanal (`RATE_LIMIT_CHAT_PER_MIN`, 429 + `Retry-After: 60`); limit per IP
+**tidak** berlaku di endpoint ini karena semua pengguna datang dari IP konektor yang sama.
+Klien WhatsApp produksi: notification-service (`internal/ai`, `internal/wachat`).
 
 ## Admin (`X-API-Key` admin)
 

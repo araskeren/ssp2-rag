@@ -49,14 +49,21 @@ async def enforce_available(services: Services, identity: Identity) -> None:
         raise ApiError(503, FEATURE_OFF_DETAIL)
 
 
-def enforce_rate_limit(request: Request, services: Services, identity: Identity) -> None:
+def enforce_rate_limit(
+    request: Request, services: Services, identity: Identity, *, check_ip: bool = True
+) -> None:
+    """Limit per principal selalu berlaku; limit per IP hanya untuk klien langsung.
+
+    `check_ip=False` dipakai endpoint konektor: semua pengguna WA/TG datang dari IP yang sama
+    (notification-service), sehingga bucket per-IP akan mencekik seluruh pengguna sekaligus.
+    """
     if services.rate_chat is not None and not services.rate_chat.allow(
         f"{identity.platform}:{identity.principal_id}"
     ):
         raise ApiError(
             429, "terlalu banyak permintaan, coba lagi sebentar", headers={"Retry-After": "60"}
         )
-    if services.rate_ip is not None and not services.rate_ip.allow(client_ip(request)):
+    if check_ip and services.rate_ip is not None and not services.rate_ip.allow(client_ip(request)):
         raise ApiError(
             429, "terlalu banyak permintaan dari alamat ini", headers={"Retry-After": "60"}
         )

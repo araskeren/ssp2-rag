@@ -4,15 +4,16 @@ Layanan Python (FastAPI + LangChain) yang menyediakan **asisten helpdesk berbasi
 untuk semua pengguna dan **analisis data operasional (Text-to-SQL, read-only)** khusus pengguna
 berwenang, dengan otorisasi tingkat tool (RBAC) dan pembatasan wilayah mengikuti aturan backend.
 
-**Kanal:** web (JWT backend) · konektor WhatsApp/Telegram (API internal ber-`X-API-Key`; pengiriman
-balasan tetap lewat `notification-service`). **Stack:** Python 3.12 · FastAPI · LangChain v1 ·
+**Kanal:** web (JWT backend) · konektor WhatsApp/Telegram (API internal ber-`X-API-Key`). Kanal
+WhatsApp **dimiliki `notification-service`** (repo `ssp2-notificcation`, sidecar `wa-gateway`/Baileys):
+ia yang menerima, mengantre, dan membalas pesan — ai-service hanya menyusun jawaban. **Stack:** Python 3.12 · FastAPI · LangChain v1 ·
 PostgreSQL 18 + pgvector · LLM OpenAI-compatible (cloud untuk dev, vLLM/Ollama on-prem untuk prod).
 
 ## Arsitektur
 
 ```
 Web FE (BFF /api/ai/* → Bearer JWT BE) ─┐                         ┌─ LLM OpenAI-compatible (LLM_BASE_URL)
-Konektor WA/TG (X-API-Key, nanti) ──────┴→ ai-service (FastAPI) ──┼─ BE GET /auth/profile → role, permission, faskes
+notification-service (WA, X-API-Key) ───┴→ ai-service (FastAPI) ──┼─ BE GET /auth/profile → role, permission, faskes
                                            │ LangChain agent        ├─ ai_postgres (pgvector): dokumen, chunk, sesi, audit, kanal
                                            │  ├ cari_dokumen        └─ Analitik (pluggable): Postgres BE via role ai_ro
                                            │  └ analisis_data (analis)   ClickHouse dn_* via app_ro (opsional)
