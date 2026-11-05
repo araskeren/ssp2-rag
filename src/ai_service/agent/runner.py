@@ -388,7 +388,7 @@ class ChatRunner:
         intent = self._intent(trace, answer)
         sources = self._select_sources(trace, answer)
         sql_public = trace.sql.to_dict(include_rows=True) if trace.sql is not None else None
-        sql_stored = trace.sql.to_dict(include_rows=False) if trace.sql is not None else None
+        sql_stored = trace.sql.to_dict(include_rows=True) if trace.sql is not None else None
         reply = await self._chats.add_messages(
             ctx.session_id,
             query,

@@ -14,7 +14,7 @@ from langchain.agents.middleware import (
     wrap_model_call,
     wrap_tool_call,
 )
-from langchain_core.messages import HumanMessage, ToolMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 from ai_service.agent.context import ChatContext, ToolCallRecord
 from ai_service.agent.prompting import render_system_prompt
@@ -24,6 +24,11 @@ from ai_service.logging import get_logger
 log = get_logger(__name__)
 
 RESTRICTED_TOOLS = frozenset({"analisis_data"})
+DENIAL_REPLY = (
+    "Maaf, fitur Analisis Data hanya tersedia untuk analis yang berwenang. "
+    "Saya bisa membantu Anda dengan pertanyaan terkait dokumen panduan, petunjuk teknis, "
+    "atau definisi operasional."
+)
 FEATURE_OFF_MESSAGE = (
     "Fitur ini sedang dinonaktifkan administrator. Sampaikan hal itu kepada pengguna "
     "dan jangan mencoba cara lain."
@@ -78,8 +83,32 @@ def build_middleware(audit_denial: DenialAudit, *, force_tool: bool = True) -> l
         if disabled:
             request = request.override(tools=[t for t in request.tools if t.name not in disabled])
         choice = decide_tool_choice(list(request.messages), force_tool)
-        if choice and any(t.name == choice for t in request.tools):
-            request = request.override(tool_choice=choice)
+        if not choice or not any(t.name == choice for t in request.tools):
+            return await handler(request)
+
+        # Penolakan deterministik: jangan bergantung pada model memanggil tool, karena
+        # jawaban penolakan yang disusun model tidak tercatat di audit.
+        ctx: ChatContext = request.runtime.context
+        if choice in RESTRICTED_TOOLS and not ctx.identity.is_analyst and not ctx.trace.denied:
+            question = list(request.messages)[-1].content
+            question = (question if isinstance(question, str) else str(question))[:2000]
+            ctx.trace.denied = True
+            ctx.trace.denied_question = question
+            ctx.trace.tool_calls.append(
+                ToolCallRecord(choice, "denied", "akses analisis data ditolak")
+            )
+            log.info(
+                "akses analisis data ditolak",
+                principal=ctx.identity.principal_id,
+                platform=ctx.platform,
+            )
+            try:
+                await audit_denial(ctx, question)
+            except Exception as exc:  # noqa: BLE001 — audit gagal tidak boleh membuka akses
+                log.error("audit penolakan gagal", error=str(exc))
+            return AIMessage(content=DENIAL_REPLY)
+
+        request = request.override(tool_choice=choice)
         return await handler(request)
 
     @wrap_tool_call

@@ -1,21 +1,36 @@
 # Integrasi ai-service dengan FE, BE, dan konektor pesan
 
-## 1. Frontend web (turborepo/apps/fe)
+## 1. Frontend web (chatbot, `fe/`)
 
-Token pengguna tersimpan di cookie httpOnly, jadi FE memanggil ai-service lewat **BFF** seperti
-`src/routes/api/notif/$.ts` untuk notification-service:
+FE standalone di `fe/` memakai **Vite SPA murni** (Vite + React 19 + TypeScript). Tidak ada SSR
+dan tidak ada BFF: browser memanggil ai-service langsung, mengirim JWT sebagai Bearer.
 
-1. Buat `src/routes/api/ai/$.ts` yang meneruskan `/api/ai/*` → `${AI_URL}/api/v1/*` sambil
-   menyisipkan `Authorization: Bearer <accessToken cookie>` dan `X-Forwarded-For` klien.
-2. Env FE: `AI_URL` per environment (local compose `http://ssp2_dev_ai:3000`, prod
-   `http://ssp2_prod_ai:3000` atau lewat nginx internal). Daftarkan di allowlist compose FE.
-3. Streaming: `fetch('/api/ai/chat/stream', {method: 'POST', body})` lalu baca
-   `response.body` (ReadableStream) dan parse blok `event:`/`data:`; BFF meneruskan `upstream.body`
-   apa adanya (pola proxy SSE inbox).
-4. Gate UI mode "Analisis Data" dengan `GET /api/ai/me` → `ai_role === 'analyst'`; tampilkan
-   `scope_label` agar pengguna tahu batas wilayah data.
-5. Tampilkan `sources[]` sebagai daftar sitasi (ref, judul/berkas, halaman) dan `sql` sebagai
-   tabel + SQL yang bisa disalin.
+1. **Stack**: `vite` (build), React 19, TypeScript. Entry `fe/src/main.tsx`, komponen `fe/src/App.tsx`.
+2. **Auth** — dua mode:
+   - *public*: pengguna tanpa login, `identity` jatuh ke kebijakan publik ai-service.
+   - *auth BE*: login ke BE (`POST {BE_URL}/auth/login`) → JWT disimpan di `localStorage`
+     (`access_token`), lalu dikirim sebagai `Authorization: Bearer <jwt>`. Validasi JWT
+     sepenuhnya di BE/ai-service — FE tidak memutuskan peran.
+3. **Env FE** (`fe/src/lib/env.ts`): `VITE_AI_URL` (default `http://localhost:3003/api/v1`),
+   `VITE_BE_URL` (default `http://localhost:3001`).
+4. **CORS wajib**: karena tanpa BFF, ai-service harus mengizinkan origin FE —
+   set `CORS_ORIGIN=http://localhost:5173` di `.env` ai-service dan `CORS_ORIGIN` di mock BE.
+5. **Streaming SSE**: `fetch('/chat/stream')` → baca `response.body` (ReadableStream), parse blok
+   `event:`/`data:` (event `meta`, `token`, `tool`, `sources`, `sql`, `done`, `error`).
+6. **Riwayat sesi**: `GET /chat/sessions` (sidebar), `GET /chat/sessions/{id}/messages` (detail),
+   `DELETE /chat/sessions/{id}` (hapus).
+7. **Gate mode Analisis**: `GET /me` → `ai_role === 'analyst'`; tampilkan `scope_label` agar
+   pengguna tahu batas wilayah data. Penegakan tetap di server (RBAC + permission `ai_chat:analyze`).
+8. **Tampilan hasil**: `sources[]` sebagai daftar sitasi (ref, judul/berkas, halaman); `sql`
+   dirender sebagai **tabel hasil saja** (query SQL internal, tidak ditampilkan).
+
+### Menjalankan lokal (3 terminal)
+
+```bash
+uv run ai-service serve                        # :3003
+uv run python scripts/mock_be.py --port 3001   # :3001
+cd fe && npm run dev                           # :5173
+```
 
 ## 2. Kontrak konektor WhatsApp/Telegram (notification-service atau layanan penerus)
 

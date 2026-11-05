@@ -1,0 +1,6 @@
+node_modules
+dist
+.react-router
+
+# artefak verifikasi taste-skill (screenshot lokal, bukan kode)
+.taste-skill/

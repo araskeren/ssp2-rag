@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Mock backend NestJS untuk dev/smoke: hanya GET /auth/profile.
+"""Mock backend NestJS untuk dev/smoke: GET /auth/profile, POST /auth/login|logout (dev-only, set cookie httpOnly).
 
 Memverifikasi Bearer HS256 dengan JWT_SECRET (default dev) dan membalas profil per `sub`:
   42 → Admin Kemenkes @ Kementerian & Lembaga   (analyst, GLOBAL)
@@ -13,14 +13,18 @@ Jalankan: uv run python scripts/mock_be.py --port 3001
 from __future__ import annotations
 
 import argparse
+import datetime
 import os
 
 import jwt
 import uvicorn
-from fastapi import FastAPI, Header
+from fastapi import Body, FastAPI, Header
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 SECRET = os.environ.get("JWT_SECRET", "dev-jwt-secret-samakan-dengan-backend")
+
+CORS_ORIGIN = os.environ.get("CORS_ORIGIN", "http://localhost:5173")
 
 FACILITY_KEMENKES = {
     "id": 1,
@@ -89,6 +93,17 @@ PROFILES = {
 }
 
 app = FastAPI(title="mock-be")
+app.add_middleware(
+    CORSMiddleware,
+    # Dev-only: izinkan origin lokal apa pun (localhost/127.0.0.1, port berapa saja).
+    # allow_credentials=True tidak boleh dipasangkan dengan allow_origins=["*"],
+    # jadi dibatasi lewat regex origin lokal.
+    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$",
+    allow_origins=[o.strip() for o in CORS_ORIGIN.split(",") if o.strip()],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.get("/auth/profile")
@@ -119,6 +134,39 @@ def profile(authorization: str | None = Header(default=None)):
         "googleLinked": False,
         "passkeyCount": 0,
     }
+
+
+DEV_PERSONAS = {"42", "43", "44", "45", "46"}
+
+
+@app.post("/auth/login")
+def login(payload: dict | None = Body(default=None)):
+    """DEV-ONLY: login sebagai persona tetap. Di BE asli, ini validasi kredensial."""
+    sub = str((payload or {}).get("sub", "42"))
+    if sub not in DEV_PERSONAS:
+        return JSONResponse(status_code=400, content={"statusCode": 400, "message": f"sub harus salah satu {sorted(DEV_PERSONAS)}"})
+    now = datetime.datetime.now(datetime.timezone.utc)
+    token = jwt.encode(
+        {
+            "sub": int(sub),
+            "email": f"user{sub}@example.id",
+            "sessionId": f"dev-session-{sub}",
+            "iat": int(now.timestamp()),
+            "exp": int(now.timestamp()) + 3600,
+        },
+        SECRET,
+        algorithm="HS256",
+    )
+    resp = JSONResponse(content={"ok": True, "sub": sub, "access_token": token})
+    resp.set_cookie(key="access_token", value=token, httponly=True, samesite="lax")
+    return resp
+
+
+@app.post("/auth/logout")
+def logout():
+    resp = JSONResponse(content={"ok": True})
+    resp.delete_cookie("access_token")
+    return resp
 
 
 if __name__ == "__main__":
