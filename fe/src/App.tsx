@@ -185,10 +185,19 @@ export default function App() {
   const [status, setStatus] = useState("");
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [desktopSidebarOpen, setDesktopSidebarOpen] = useState(true);
   const [theme, setTheme] = useState<Theme>(getTheme);
   const abortRef = useRef<AbortController | null>(null);
   const messagesRef = useRef<HTMLDivElement | null>(null);
   const taRef = useRef<HTMLTextAreaElement | null>(null);
+
+  function toggleSidebar() {
+    if (typeof window !== "undefined" && window.innerWidth <= 860) {
+      setSidebarOpen((prev) => !prev);
+    } else {
+      setDesktopSidebarOpen((prev) => !prev);
+    }
+  }
 
   useEffect(() => {
     (async () => {
@@ -239,7 +248,7 @@ export default function App() {
     }
   }, [msgs, sending, status, loadingHistory]);
 
-  async function handleLogin(e: React.FormEvent) {
+  async function handleLogin(e: React.SyntheticEvent) {
     e.preventDefault();
     setBusy(true);
     try {
@@ -459,50 +468,76 @@ export default function App() {
   return (
     <div className="app-root">
       <header className="topbar">
-        <span className="brand">
-          <span className="brand-mark" aria-hidden="true" />
-          Asisten Satu Data Penyakit
-        </span>
-        <div className="me">
-          <span className="me-name">{user.display_name}</span>
-          <span className="me-role">{user.role_name}</span>
-          {user.ai_role === "analyst" && (
-            <span className="badge analyst">Analis</span>
-          )}
-          {user.ai_role === "analyst" && user.features?.analysis === false && (
-            <span className="badge scope">Analisis nonaktif</span>
-          )}
-          <span className="badge scope">{user.scope_label}</span>
-          <button className="btn ghost" onClick={handleLogout}>
-            Keluar
-          </button>
+        <div className="topbar-left">
           <button
-            className="btn ghost theme-toggle"
+            className="sidebar-toggle-btn"
             type="button"
-            onClick={() =>
-              setTheme(theme === "system" ? "light" : theme === "light" ? "dark" : "system")
-            }
-            aria-label="Ganti tema (sistem/terang/gelap)"
-            title={
-              theme === "system"
-                ? "Tema: Ikuti Sistem"
-                : theme === "light"
-                  ? "Tema: Terang"
-                  : "Tema: Gelap"
-            }
+            onClick={toggleSidebar}
+            aria-label="Toggle riwayat percakapan"
+            title="Riwayat chat"
           >
-            {theme === "system" ? (
-              <ThemeMonitorIcon />
-            ) : theme === "light" ? (
-              <ThemeSunIcon />
-            ) : (
-              <ThemeMoonIcon />
-            )}
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+            <span className="toggle-label">Riwayat</span>
           </button>
+          <span className="brand">
+            <span className="brand-mark" aria-hidden="true" />
+            <span className="brand-title">Asisten Satu Data Penyakit</span>
+          </span>
+        </div>
+        <div className="me">
+          <div className="me-user">
+            <span className="me-name">{user.display_name}</span>
+            <span className="me-role">{user.role_name}</span>
+          </div>
+          <div className="me-badges">
+            {user.ai_role === "analyst" && (
+              <span className="badge analyst">Analis</span>
+            )}
+            {user.ai_role === "analyst" && user.features?.analysis === false && (
+              <span className="badge scope">Analisis nonaktif</span>
+            )}
+            <span className="badge scope">{user.scope_label}</span>
+          </div>
+          <div className="me-actions">
+            <button className="btn ghost" onClick={handleLogout}>
+              Keluar
+            </button>
+            <button
+              className="btn ghost theme-toggle"
+              type="button"
+              onClick={() =>
+                setTheme(theme === "system" ? "light" : theme === "light" ? "dark" : "system")
+              }
+              aria-label="Ganti tema (sistem/terang/gelap)"
+              title={
+                theme === "system"
+                  ? "Tema: Ikuti Sistem"
+                  : theme === "light"
+                    ? "Tema: Terang"
+                    : "Tema: Gelap"
+              }
+            >
+              {theme === "system" ? (
+                <ThemeMonitorIcon />
+              ) : theme === "light" ? (
+                <ThemeSunIcon />
+              ) : (
+                <ThemeMoonIcon />
+              )}
+            </button>
+          </div>
         </div>
       </header>
 
-      <div className={"chat-layout" + (sidebarOpen ? " nav-open" : "")}>
+      <div
+        className={
+          "chat-layout" +
+          (sidebarOpen ? " nav-open" : "") +
+          (!desktopSidebarOpen ? " desktop-sidebar-closed" : "")
+        }
+      >
         <div className="sidebar-backdrop" aria-hidden="true" onClick={() => setSidebarOpen(false)} />
         <aside className="sidebar">
           <div className="sidebar-head">
@@ -544,17 +579,6 @@ export default function App() {
         </aside>
 
         <section className="chat-main">
-          <div className="mobile-bar">
-            <button
-              className="mobile-nav-toggle"
-              type="button"
-              aria-label="Buka riwayat sesi"
-              onClick={() => setSidebarOpen(true)}
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16" /></svg>{" "}
-              Riwayat
-            </button>
-          </div>
           <div className="messages" ref={messagesRef}>
             {loadingHistory ? (
               <div className="skeleton-list" aria-label="Memuat riwayat…">
@@ -678,10 +702,11 @@ function Message({ msg }: { msg: Msg }) {
             remarkPlugins={[remarkGfm]}
             components={{
               table: ({ node: _node, ...rest }: any) => (
-                <div className="table-scroll">
+                <div className="table-scroll" role="region" aria-label="Tabel hasil" tabIndex={0}>
                   <table {...rest} />
                 </div>
               ),
+              th: ({ node: _node, ...rest }: any) => <th scope="col" {...rest} />,
             }}
           >
             {msg.text || "…"}
@@ -714,8 +739,9 @@ function Message({ msg }: { msg: Msg }) {
               ) : null}
             </div>
             {msg.sql.rows && (
-              <table>
-                <thead>
+              <div className="table-scroll sql-table-scroll" role="region" aria-label="Hasil analisis" tabIndex={0}>
+                <table>
+                  <thead>
                   <tr>
                     {(msg.sql.columns || []).map((c) => (
                       <th key={c}>{c}</th>
@@ -730,8 +756,9 @@ function Message({ msg }: { msg: Msg }) {
                       ))}
                     </tr>
                   ))}
-                </tbody>
-              </table>
+                  </tbody>
+                </table>
+              </div>
             )}
             {msg.sql.truncated ? (
               <div className="muted">Baris dipotong (menampilkan sebagian).</div>
