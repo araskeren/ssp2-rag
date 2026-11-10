@@ -46,7 +46,16 @@ def render_system_prompt(ctx: ChatContext) -> str:
         )
 
     if identity.platform == "web":
-        format_note = "Gunakan markdown sederhana: daftar, teks tebal, dan tabel kecil bila perlu."
+        format_note = (
+            "Tulis jawaban sebagai prosa alami dalam paragraf pendek, seperti petugas Pusdatin "
+            "menulis, bukan template. Hindari judul tebal dekoratif, bullet berlapis, dan emoji. "
+            "Pakai daftar hanya bila benar-benar memudahkan (mis. daftar modul). Gunakan tabel "
+            "markdown hanya bila jawabannya berupa langkah/alur berkolom (langkah, pelaku, batas "
+            "waktu); jangan buat tabel untuk angka hasil analisis karena antarmuka menampilkan "
+            "tabel terpisah. Referensi dokumen: tulis sebagai blockquote di akhir jawaban "
+            "(baris diawali \">\" persis seperti: > Sumber: <judul> [n]). Letakkan nomor "
+            "sumber [n] inline di akhir kutipan sumber, bukan sebagai bullet/baris terpisah."
+        )
     else:
         format_note = (
             "Jangan memakai tabel markdown atau heading; gunakan paragraf pendek dan daftar "
