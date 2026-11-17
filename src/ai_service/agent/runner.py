@@ -132,6 +132,7 @@ class ChatRunner:
         self._backend_name = backend_name
         self._retriever = retriever
         self._features = features
+        self._streams: dict[tuple[str, str], asyncio.Task] = {}
 
     async def agent_for(self, identity: Identity) -> tuple[Any, str]:
         """Agent + label model untuk identitas ini (override kanal → role → default → env)."""
@@ -218,6 +219,23 @@ class ChatRunner:
             question=question or "(tanpa pertanyaan)",
             status="access_denied",
         )
+
+    # ------------------------------------------------------------------ pembatalan stream
+    def register_stream(
+        self, platform: str, principal_id: str, task: asyncio.Task
+    ) -> None:
+        self._streams[(platform, principal_id)] = task
+
+    def unregister_stream(self, platform: str, principal_id: str) -> None:
+        self._streams.pop((platform, principal_id), None)
+
+    def cancel_stream(self, platform: str, principal_id: str) -> bool:
+        """Batalkan task streaming aktif milik pengguna ini (kalau ada)."""
+        task = self._streams.get((platform, principal_id))
+        if task is not None and not task.done():
+            task.cancel()
+            return True
+        return False
 
     # ------------------------------------------------------------------ non-stream
     async def run(self, identity: Identity, session_id: str, query: str) -> ChatResult:

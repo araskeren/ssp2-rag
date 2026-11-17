@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import re
 import uuid
 
@@ -13,10 +14,12 @@ from ai_service.api.schemas import ChatRequest
 from ai_service.api.sse import sse_response
 from ai_service.auth.identity import Identity
 from ai_service.errors import ApiError
+from ai_service.logging import get_logger
 from ai_service.services import Services
 
 router = APIRouter(prefix="/api/v1", tags=["chat"])
 
+log = get_logger(__name__)
 WEB_SESSION_RE = re.compile(r"^web_[0-9a-fA-F-]{8,64}$")
 
 
@@ -96,9 +99,46 @@ async def chat_stream(
     runner = _runner(services)
     runner.validate_query(body.query)
     await runner.ensure_session(identity, session_id)
-    return sse_response(
-        runner.stream(identity, session_id, body.query), services.settings.sse_heartbeat_s
-    )
+    # Jalankan stream dalam task agar bisa dibatalkan lewat /chat/stop (stop server-side).
+    queue: asyncio.Queue = asyncio.Queue()
+    key = (identity.platform, identity.principal_id)
+
+    async def _producer() -> None:
+        try:
+            async for event in runner.stream(identity, session_id, body.query):
+                await queue.put(event)
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001
+            log.exception("stream chat gagal di producer")
+        finally:
+            await queue.put(None)
+
+    task = asyncio.create_task(_producer())
+    runner.register_stream(*key, task)
+
+    async def _relay():
+        try:
+            while True:
+                item = await queue.get()
+                if item is None:
+                    return
+                yield item
+        finally:
+            runner.unregister_stream(*key)
+
+    return sse_response(_relay(), services.settings.sse_heartbeat_s)
+
+
+@router.post("/chat/stop")
+async def stop_chat(
+    identity: Identity = Depends(get_web_identity),
+    services: Services = Depends(get_services),
+) -> dict:
+    """Batalkan streaming LLM yang sedang berjalan untuk pengguna ini (server-side)."""
+    runner = _runner(services)
+    cancelled = runner.cancel_stream(identity.platform, identity.principal_id)
+    return {"ok": True, "cancelled": cancelled}
 
 
 @router.get("/chat/sessions")
